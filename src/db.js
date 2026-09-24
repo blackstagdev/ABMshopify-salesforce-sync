@@ -11,6 +11,9 @@ export function createDb({ databaseUrl, databaseSsl }) {
     ssl: databaseSsl ? { rejectUnauthorized: false } : false,
     max: 5,
   });
+  // An idle connection dropped by the server (restart, maintenance) must
+  // not crash the process; the pool reconnects on the next query.
+  pool.on('error', (err) => console.error('[db] idle connection error:', err.message));
 
   async function migrate() {
     await pool.query(`

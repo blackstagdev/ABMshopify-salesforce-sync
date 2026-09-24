@@ -6,7 +6,22 @@ import { processEvent } from './processor.js';
 import { createSalesforceClient } from './salesforce/client.js';
 
 const db = createDb(config);
-await db.migrate();
+await migrateWithRetry(db);
+
+// A freshly created Render database can take a few minutes to accept
+// connections, so wait for it instead of crashing the deploy.
+async function migrateWithRetry(database, attempts = 36, delayMs = 5000) {
+  for (let attempt = 1; ; attempt++) {
+    try {
+      await database.migrate();
+      return;
+    } catch (err) {
+      if (attempt >= attempts) throw err;
+      console.warn(`[startup] database not ready (${err.code || err.message}), retry ${attempt}/${attempts} in ${delayMs / 1000}s`);
+      await new Promise((resolve) => setTimeout(resolve, delayMs));
+    }
+  }
+}
 
 const sf = config.salesforce.mode === 'live' ? createSalesforceClient(config.salesforce) : null;
 console.info(`[startup] Salesforce mode: ${config.salesforce.mode}, provider ID strategy: ${config.mapping.providerIdStrategy}`);
