@@ -61,6 +61,9 @@ npm run register-webhooks -- --list        # show current subscriptions
 npm run backfill -- --customers            # queue existing customers
 npm run backfill -- --orders --since=2026-01-01
 npm run requeue -- --status=dry_run        # replay after switching to live
+npm run sf-describe                        # print Provider_Order__c and other order objects' fields
+npm run sf-describe -- Account --json      # any object, as JSON
+npm run sf-describe -- --list              # every custom object in the org
 ```
 
 ## Admin endpoints
