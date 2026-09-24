@@ -1,0 +1,60 @@
+# Render Blueprint: one web service plus one Postgres database.
+# Render dashboard -> New -> Blueprint -> pick this repo.
+services:
+  - type: web
+    name: shopify-salesforce-sync
+    runtime: node
+    region: oregon
+    # Not "free": free services sleep, Shopify webhooks time out after 5s,
+    # and Shopify deletes subscriptions that keep failing.
+    plan: starter
+    buildCommand: npm ci
+    startCommand: npm start
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      - key: DATABASE_URL
+        fromDatabase:
+          name: shopify-salesforce-sync-db
+          property: connectionString
+
+      # Safe defaults until Salesforce access and mapping decisions are in.
+      - key: SALESFORCE_MODE
+        value: dry_run
+      - key: PROVIDER_ID_STRATEGY
+        value: none
+      - key: ORDER_SYNC_ENABLED
+        value: "false"
+      - key: SHOPIFY_LINE_OF_BUSINESS
+        value: Alpha BioMed
+
+      # Protects /admin endpoints. Render generates a random value.
+      - key: ADMIN_TOKEN
+        generateValue: true
+
+      # Secrets: Render asks for these when the Blueprint is created.
+      - key: SHOPIFY_SHOP_DOMAIN
+        sync: false
+      - key: SHOPIFY_CLIENT_ID
+        sync: false
+      - key: SHOPIFY_CLIENT_SECRET
+        sync: false
+      - key: SHOPIFY_ADMIN_ACCESS_TOKEN
+        sync: false
+      - key: SF_LOGIN_URL
+        sync: false
+      - key: SF_CLIENT_ID
+        sync: false
+      - key: SF_CLIENT_SECRET
+        sync: false
+
+databases:
+  - name: shopify-salesforce-sync-db
+    region: oregon
+    plan: basic-256mb
+    databaseName: shopify_sync
+    user: shopify_sync
+    # Holds customer data: reachable only from services inside Render.
+    ipAllowList: []

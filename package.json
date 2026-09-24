@@ -1,0 +1,22 @@
+{
+  "name": "shopify-salesforce-sync",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Pushes customers and orders from the alphabiomedlabs.com Shopify store into Salesforce.",
+  "type": "module",
+  "main": "src/index.js",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "start": "node src/index.js",
+    "test": "node --test",
+    "register-webhooks": "node scripts/register-webhooks.js",
+    "backfill": "node scripts/backfill.js",
+    "requeue": "node scripts/requeue.js"
+  },
+  "dependencies": {
+    "express": "^5.1.0",
+    "pg": "^8.16.0"
+  }
+}
