@@ -6,8 +6,13 @@ export function createSalesforceClient(cfg, fetchImpl = fetch) {
   let session = null;
 
   async function authenticate() {
-    if (!cfg.loginUrl || !cfg.clientId || !cfg.clientSecret) {
-      throw new SalesforceError('SF_LOGIN_URL, SF_CLIENT_ID and SF_CLIENT_SECRET must be set for live mode', 0);
+    const missing = [
+      !cfg.loginUrl && 'SF_LOGIN_URL',
+      !cfg.clientId && 'SF_CLIENT_ID',
+      !cfg.clientSecret && 'SF_CLIENT_SECRET',
+    ].filter(Boolean);
+    if (missing.length) {
+      throw new SalesforceError(`Salesforce is not configured: ${missing.join(', ')} not set`, 0);
     }
     const res = await fetchImpl(`${cfg.loginUrl.replace(/\/$/, '')}/services/oauth2/token`, {
       method: 'POST',
