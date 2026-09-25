@@ -6,7 +6,9 @@
 import { config } from '../src/config.js';
 import { createShopifyAdmin } from '../src/shopify/admin.js';
 
-const TOPICS = ['CUSTOMERS_CREATE', 'CUSTOMERS_UPDATE', 'ORDERS_CREATE', 'ORDERS_UPDATED'];
+// Customers only: the Salesforce field reference covers Lead, Account and
+// Contact. Orders (Provider_Order__c) are out of scope for now.
+const TOPICS = ['CUSTOMERS_CREATE', 'CUSTOMERS_UPDATE'];
 
 const shopify = createShopifyAdmin(config.shopify);
 
