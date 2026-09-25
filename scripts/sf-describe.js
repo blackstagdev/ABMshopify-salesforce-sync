@@ -53,7 +53,11 @@ for (const name of names) {
     picklist: f.picklistValues?.filter((p) => p.active).map((p) => p.value) ?? [],
     help: f.inlineHelpText || '',
   }));
-  output.push({ object: name, label: data.label, recordTypes: data.recordTypeInfos.filter((r) => !r.master).map((r) => r.developerName), fields });
+  // "available" means the running (integration) user may create records with it.
+  const recordTypes = data.recordTypeInfos
+    .filter((r) => !r.master)
+    .map((r) => `${r.developerName}${r.available ? '' : ' (NOT available to this user)'}${r.defaultRecordTypeMapping ? ' (default)' : ''}`);
+  output.push({ object: name, label: data.label, recordTypes, fields });
 }
 
 if (asJson) {
