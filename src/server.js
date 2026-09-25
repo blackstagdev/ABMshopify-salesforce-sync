@@ -6,6 +6,12 @@ export function createApp({ db, config, log = console }) {
   const app = express();
   app.disable('x-powered-by');
 
+  // Shopify opens the App URL after installing the app. There is no admin
+  // UI, so just confirm the install worked.
+  app.get('/', (req, res) => {
+    res.type('text/plain').send('Salesforce Sync is installed and running. You can close this window.');
+  });
+
   app.get('/health', async (req, res) => {
     try {
       await db.ping();

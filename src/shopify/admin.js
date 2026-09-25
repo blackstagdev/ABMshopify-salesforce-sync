@@ -12,6 +12,14 @@ function nextPageUrl(linkHeader) {
   return null;
 }
 
+// Shopify answers some errors with a full HTML page; keep only the
+// "What happened?" text so the message fits on one line.
+function summarize(body) {
+  if (!body.trimStart().startsWith('<')) return body;
+  const detail = body.match(/What happened\?<\/h3>\s*<div[^>]*>\s*([^<]+)/)?.[1] || body.match(/<title>([^<]+)<\/title>/)?.[1];
+  return detail ? detail.trim() : 'HTML error page';
+}
+
 export function createShopifyAdmin(cfg, fetchImpl = fetch) {
   if (!cfg.shopDomain) throw new Error('SHOPIFY_SHOP_DOMAIN is not set');
   const base = `https://${cfg.shopDomain}/admin/api/${cfg.apiVersion}`;
@@ -34,7 +42,7 @@ export function createShopifyAdmin(cfg, fetchImpl = fetch) {
         client_secret: cfg.clientSecret,
       }),
     });
-    if (!res.ok) throw new Error(`Shopify token request failed: ${res.status} ${await res.text()}`);
+    if (!res.ok) throw new Error(`Shopify token request failed: ${res.status} ${summarize(await res.text())}`);
     const data = await res.json();
     token = data.access_token;
     expiresAt = data.expires_in ? Date.now() + data.expires_in * 1000 : Infinity;
@@ -55,7 +63,7 @@ export function createShopifyAdmin(cfg, fetchImpl = fetch) {
         await sleep(Number(res.headers.get('Retry-After') || 2) * 1000);
         continue;
       }
-      if (!res.ok) throw new Error(`Shopify ${init.method || 'GET'} ${url} failed: ${res.status} ${await res.text()}`);
+      if (!res.ok) throw new Error(`Shopify ${init.method || 'GET'} ${url} failed: ${res.status} ${summarize(await res.text())}`);
       return res;
     }
   }
