@@ -115,3 +115,19 @@ test('guest checkout order is blocked for lack of a customer', () => {
 test('unhandled topics return no plan', () => {
   assert.equal(buildPlan('products/create', {}, baseOpts), null);
 });
+
+test('customer_metafield strategy uses the looked-up Provider ID metafield', () => {
+  const opts = { ...baseOpts, providerIdStrategy: 'customer_metafield', providerIdMetafield: 'custom.provider_id' };
+  const plan = buildPlan('customers/update', customer, opts, { providerIdMetafield: ' HWwmF72if9TJU9G1AZ9f ' });
+  assert.deepEqual(plan.blockers, []);
+  assert.equal(plan.ops[0].providerId, 'HWwmF72if9TJU9G1AZ9f');
+
+  const missing = buildPlan('customers/update', customer, opts, { providerIdMetafield: null });
+  assert.match(missing.blockers.join(), /no custom\.provider_id metafield/);
+});
+
+test('Shopify customer id is written to Shopify_ID__c on create and update', () => {
+  const [account] = buildPlan('customers/update', customer, baseOpts).ops;
+  assert.equal(account.createFields.Shopify_ID__c, '7382910');
+  assert.equal(account.updateFields.Shopify_ID__c, '7382910');
+});

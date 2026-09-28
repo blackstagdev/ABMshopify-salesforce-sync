@@ -4,6 +4,7 @@ import { createApp } from './server.js';
 import { startWorker } from './worker.js';
 import { processEvent } from './processor.js';
 import { createSalesforceClient } from './salesforce/client.js';
+import { createShopifyAdmin } from './shopify/admin.js';
 
 const db = createDb(config);
 await migrateWithRetry(db);
@@ -24,6 +25,8 @@ async function migrateWithRetry(database, attempts = 36, delayMs = 5000) {
 }
 
 const sf = config.salesforce.mode === 'live' ? createSalesforceClient(config.salesforce) : null;
+// Used to read customer metafields (the Provider ID) during processing.
+const shopify = config.shopify.shopDomain ? createShopifyAdmin(config.shopify) : null;
 console.info(`[startup] Salesforce mode: ${config.salesforce.mode}, provider ID strategy: ${config.mapping.providerIdStrategy}`);
 
 const server = createApp({ db, config }).listen(config.port, () => {
@@ -38,6 +41,7 @@ const worker = config.worker.enabled
         mapping: config.mapping,
         salesforce: config.salesforce,
         sf,
+        shopify,
       }),
       ...config.worker,
     })

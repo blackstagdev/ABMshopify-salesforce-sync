@@ -15,7 +15,7 @@ Shopify ──webhook──▶ POST /webhooks/shopify ──▶ Postgres (shopif
 
 A customer becomes:
 
-- an **Account** upserted on `Provider_ID__c` with Name (set on create only), phone, `Primary_Email__c` and billing address, and
+- an **Account** upserted on `Provider_ID__c` with Name (set on create only), `Shopify_ID__c` (the Shopify customer id), phone, `Primary_Email__c` and billing address, and
 - a **Contact** on that Account, matched on Account + Email.
 
 An order syncs its customer the same way. The order itself is only previewed until `Provider_Order__c` is mapped.
@@ -41,7 +41,7 @@ Salesforce 429 and 5xx errors and network errors are retried with backoff (30 s 
 
 ## Open decisions (blocking live sync)
 
-1. **Provider ID rule.** How a Shopify customer gets its `Provider_ID__c`. The field reference says this is undecided, so `PROVIDER_ID_STRATEGY=none` blocks every event instead of guessing. The alternatives, `customer_tag` (a tag like `provider:ABM-00123`) and `shopify_customer_id`, must be agreed with the Salesforce team first.
+1. **Provider ID rule.** How a Shopify customer gets its `Provider_ID__c`. The source is now the Shopify customer metafield "Provider ID": set `PROVIDER_ID_STRATEGY=customer_metafield` and `PROVIDER_ID_METAFIELD=<namespace.key>`. The app reads it from the Shopify Admin API while processing each event. Customers without a value are blocked. Before going live, check that these values match the Provider IDs already on existing Salesforce Accounts; otherwise the sync will create duplicate practices.
 2. **`Provider_Order__c` fields.** These aren't in the workbook. Once they are, implement `upsertOrder` in [src/salesforce/executor.js](src/salesforce/executor.js) and set `ORDER_SYNC_ENABLED=true`.
 3. **Lead or Account?** The service creates Accounts and Contacts, not Leads. Confirm that this is what the Salesforce team wants for Shopify customers.
 4. **Integration user.** It needs a dedicated user and Connected App (client credentials flow), not a person's login.

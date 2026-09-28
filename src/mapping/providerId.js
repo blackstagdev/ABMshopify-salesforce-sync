@@ -4,16 +4,27 @@
 // Any other strategy must be agreed with the Salesforce team first.
 const MAX_LENGTH = 30;
 
-export function resolveProviderId(customer, opts) {
-  const result = pick(customer, opts);
+// context.providerIdMetafield is the customer's metafield value, looked up
+// from Shopify by the processor (webhook payloads do not carry metafields).
+export function resolveProviderId(customer, opts, context = {}) {
+  const result = pick(customer, opts, context);
   if (result.value && result.value.length > MAX_LENGTH) {
     return { value: null, reason: `Provider ID "${result.value}" is longer than ${MAX_LENGTH} characters` };
   }
   return result;
 }
 
-function pick(customer, { providerIdStrategy, providerIdTagPrefix, providerIdPrefix }) {
+function pick(customer, { providerIdStrategy, providerIdTagPrefix, providerIdPrefix, providerIdMetafield }, context) {
   switch (providerIdStrategy) {
+    // The "Provider ID" customer metafield in Shopify.
+    case 'customer_metafield': {
+      if (!customer?.id) return { value: null, reason: 'No Shopify customer on this record (guest checkout?)' };
+      const value = String(context.providerIdMetafield ?? '').trim();
+      return value
+        ? { value }
+        : { value: null, reason: `Shopify customer has no ${providerIdMetafield} metafield value` };
+    }
+
     case 'none':
       return {
         value: null,

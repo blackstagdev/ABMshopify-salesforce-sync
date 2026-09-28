@@ -91,5 +91,16 @@ export function createShopifyAdmin(cfg, fetchImpl = fetch) {
     return data.data;
   }
 
-  return { paginate, graphql };
+  // Returns the metafield's value, or null when the customer has none.
+  async function getCustomerMetafield(customerId, namespace, key) {
+    const data = await graphql(
+      `query ($id: ID!, $namespace: String!, $key: String!) {
+        customer(id: $id) { metafield(namespace: $namespace, key: $key) { value } }
+      }`,
+      { id: `gid://shopify/Customer/${customerId}`, namespace, key },
+    );
+    return data.customer?.metafield?.value ?? null;
+  }
+
+  return { paginate, graphql, getCustomerMetafield };
 }

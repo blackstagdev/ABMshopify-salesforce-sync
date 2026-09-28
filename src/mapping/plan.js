@@ -10,24 +10,31 @@ import { resolveProviderId } from './providerId.js';
 const CUSTOMER_TOPICS = new Set(['customers/create', 'customers/update']);
 const ORDER_TOPICS = new Set(['orders/create', 'orders/updated', 'orders/paid', 'orders/cancelled']);
 
-export function buildPlan(topic, payload, opts) {
+export function buildPlan(topic, payload, opts, context = {}) {
   if (CUSTOMER_TOPICS.has(topic)) {
-    return planForCustomer({ customer: payload, address: payload.default_address, email: payload.email, phone: payload.phone }, opts);
+    return planForCustomer({ customer: payload, address: payload.default_address, email: payload.email, phone: payload.phone }, opts, context);
   }
   if (ORDER_TOPICS.has(topic)) {
-    return planForOrder(payload, opts);
+    return planForOrder(payload, opts, context);
   }
   return null;
 }
 
-function planForOrder(order, opts) {
+// The Shopify customer an event is about, for looking up its metafields.
+export function customerIdFor(topic, payload) {
+  if (CUSTOMER_TOPICS.has(topic)) return payload.id ?? null;
+  if (ORDER_TOPICS.has(topic)) return payload.customer?.id ?? null;
+  return null;
+}
+
+function planForOrder(order, opts, context) {
   const customer = order.customer || null;
   const plan = planForCustomer({
     customer,
     address: order.billing_address || customer?.default_address,
     email: order.email || order.contact_email || customer?.email,
     phone: order.phone || customer?.phone || order.billing_address?.phone,
-  }, opts);
+  }, opts, context);
 
   const preview = mapOrder(order, opts);
   if (opts.orderSyncEnabled) {
@@ -39,10 +46,10 @@ function planForOrder(order, opts) {
   return plan;
 }
 
-function planForCustomer({ customer, address, email, phone }, opts) {
+function planForCustomer({ customer, address, email, phone }, opts, context) {
   const plan = { ops: [], warnings: [], blockers: [] };
 
-  const providerId = resolveProviderId(customer, opts);
+  const providerId = resolveProviderId(customer, opts, context);
   if (!providerId.value) plan.blockers.push(providerId.reason);
 
   const firstName = clean(customer?.first_name || address?.first_name);
@@ -55,6 +62,10 @@ function planForCustomer({ customer, address, email, phone }, opts) {
 
   // Only fields that are safe to refresh from Shopify on every update.
   const accountUpdate = compact({
+    // Custom field added for this integration (not in the field reference
+    // workbook). Recorded for reference only; Accounts are still matched on
+    // Provider_ID__c.
+    Shopify_ID__c: customer?.id != null ? String(customer.id) : undefined,
     Phone: text(phone, 40),
     Primary_Email__c: validEmail,
     ...billingAddress(address),

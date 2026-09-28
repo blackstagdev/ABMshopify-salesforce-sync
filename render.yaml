@@ -20,13 +20,15 @@ services:
           name: shopify-salesforce-sync-db
           property: connectionString
 
-      # Safe defaults until Salesforce access and mapping decisions are in.
+      # Go-live switches, managed in the Render dashboard (sync: false) so a
+      # Blueprint sync never resets them. Unset means the safe default:
+      # SALESFORCE_MODE=dry_run, PROVIDER_ID_STRATEGY=none.
       - key: SALESFORCE_MODE
-        value: dry_run
+        sync: false
       - key: PROVIDER_ID_STRATEGY
-        value: none
-      - key: ORDER_SYNC_ENABLED
-        value: "false"
+        sync: false
+      - key: PROVIDER_ID_METAFIELD
+        sync: false
       - key: SHOPIFY_LINE_OF_BUSINESS
         value: Alpha BioMed
 

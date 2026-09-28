@@ -49,6 +49,9 @@ export const config = {
     providerIdStrategy: env.PROVIDER_ID_STRATEGY || 'none',
     providerIdTagPrefix: env.PROVIDER_ID_TAG_PREFIX || 'provider:',
     providerIdPrefix: env.PROVIDER_ID_PREFIX || 'SHOPIFY-',
+    // "namespace.key" of the customer metafield holding the Provider ID,
+    // used by the customer_metafield strategy.
+    providerIdMetafield: env.PROVIDER_ID_METAFIELD || '',
     lineOfBusiness: env.SHOPIFY_LINE_OF_BUSINESS || 'Alpha BioMed',
     // Provider_Order__c fields are not documented yet.
     orderSyncEnabled: bool(env.ORDER_SYNC_ENABLED),

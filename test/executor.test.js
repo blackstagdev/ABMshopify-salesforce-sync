@@ -94,3 +94,25 @@ test('only 429 and 5xx Salesforce errors are retried; backoff is capped', () => 
   assert.equal(backoffSeconds(3), 120);
   assert.equal(backoffSeconds(20), 3600);
 });
+
+test('processor looks up the Provider ID metafield from Shopify, even in dry run', async () => {
+  const lookups = [];
+  const shopify = {
+    async getCustomerMetafield(id, namespace, key) {
+      lookups.push([id, namespace, key]);
+      return 'PROV-1';
+    },
+  };
+  const mapping = { providerIdStrategy: 'customer_metafield', providerIdMetafield: 'custom.provider_id', lineOfBusiness: 'Alpha BioMed' };
+  const event = { topic: 'customers/update', payload: { id: 42, email: 'a@b.com', last_name: 'B' } };
+
+  const { status, result } = await processEvent(event, { mode: 'dry_run', mapping, shopify });
+  assert.equal(status, 'dry_run');
+  assert.deepEqual(lookups, [[42, 'custom', 'provider_id']]);
+  assert.equal(result.ops[0].providerId, 'PROV-1');
+
+  await assert.rejects(
+    processEvent(event, { mode: 'dry_run', mapping: { ...mapping, providerIdMetafield: 'provider_id' }, shopify }),
+    /namespace\.key/,
+  );
+});

@@ -21,7 +21,8 @@ Node.js (ESM, Node 22+) service that pushes Shopify customers and orders from al
 The workbook (`*.xlsx` in the project root) is gitignored. These rules must hold:
 
 - Accounts are created and updated only through `Provider_ID__c` (Text 30, unique external ID). Never match on NPI__c, Primary_Email__c or name.
-- Never invent a Provider ID rule. The strategy is configuration, and the default `none` blocks events.
+- Never invent a Provider ID rule. The strategy is configuration, and the default `none` blocks events. The chosen source is the Shopify customer metafield "Provider ID" (`PROVIDER_ID_STRATEGY=customer_metafield`, `PROVIDER_ID_METAFIELD=namespace.key`). The processor looks it up through the Shopify Admin API, because webhooks don't carry metafields.
+- `Shopify_ID__c` on Account was added by the project owner for this integration; it isn't in the workbook. It holds the Shopify customer id for reference only and is never used for matching.
 - Never write Salesforce-maintained fields (order counts, revenue, order dates, trends) or formula fields.
 - Don't write `ABM_Status__c`, `AlphaSync_Status__c`, `ABM_Owner__c`, `Sync_Owner__c` or `OwnerId`. The Account trigger rejects the integration user on the status fields, and owner changes need a custom permission.
 - Salesforce has no duplicate blocking or validation rules, so de-duplication happens here (Contact is matched on AccountId + Email).
