@@ -14,7 +14,8 @@
     "register-webhooks": "node scripts/register-webhooks.js",
     "backfill": "node scripts/backfill.js",
     "requeue": "node scripts/requeue.js",
-    "sf-describe": "node scripts/sf-describe.js"
+    "sf-describe": "node scripts/sf-describe.js",
+    "assign-provider-ids": "node scripts/assign-provider-ids.js"
   },
   "dependencies": {
     "express": "^5.1.0",

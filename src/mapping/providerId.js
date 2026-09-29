@@ -4,6 +4,20 @@
 // Any other strategy must be agreed with the Salesforce team first.
 const MAX_LENGTH = 30;
 
+// New Provider IDs, for practices that don't have one yet ("a value is
+// generated during migration and written back", Provider_ID__c
+// description). Uppercase letters and digits only, so the value can't clash
+// with another one that differs only in case.
+const ID_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+export const GENERATED_ID_LENGTH = 20;
+
+export function generateProviderId(randomBytes) {
+  const bytes = randomBytes(GENERATED_ID_LENGTH);
+  let id = '';
+  for (const b of bytes) id += ID_ALPHABET[b % ID_ALPHABET.length];
+  return id;
+}
+
 // context.providerIdMetafield is the customer's metafield value, looked up
 // from Shopify by the processor (webhook payloads do not carry metafields).
 export function resolveProviderId(customer, opts, context = {}) {

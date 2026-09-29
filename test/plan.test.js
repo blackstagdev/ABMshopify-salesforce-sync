@@ -131,3 +131,28 @@ test('Shopify customer id is written to Shopify_ID__c on create and update', () 
   assert.equal(account.createFields.Shopify_ID__c, '7382910');
   assert.equal(account.updateFields.Shopify_ID__c, '7382910');
 });
+
+test('generated Provider IDs are 20 unambiguous uppercase characters', async () => {
+  const { generateProviderId } = await import('../src/mapping/providerId.js');
+  const crypto = await import('node:crypto');
+  const ids = new Set(Array.from({ length: 1000 }, () => generateProviderId(crypto.randomBytes)));
+  assert.equal(ids.size, 1000);
+  for (const id of ids) assert.match(id, /^[A-HJ-NP-Z2-9]{20}$/);
+});
+
+test('customers that look like the same practice are flagged', async () => {
+  const { flagSamePractice } = await import('../src/mapping/samePractice.js');
+  const all = [
+    { id: '1', name: 'Albert C', email: 'albert@blackstag.us', company: 'Blackstag', providerId: 'HWWM1' },
+    { id: '2', name: 'Bea D', email: 'bea@blackstag.us', company: null, providerId: null },
+    { id: '3', name: 'Cal E', email: 'cal@gmail.com', company: 'BLACKSTAG ', providerId: null },
+    { id: '4', name: 'Dee F', email: 'dee@gmail.com', company: null, providerId: null },
+    { id: '5', name: 'Eve G', email: 'eve@sunrise.com', company: 'Sunrise', providerId: null },
+    { id: '6', name: 'Fay H', email: 'fay@sunrise.com', company: null, providerId: null },
+  ];
+  const notes = flagSamePractice(all.filter((c) => !c.providerId), all);
+  assert.match(notes.get('2'), /Albert C, who already has Provider ID HWWM1/);
+  assert.match(notes.get('3'), /Albert C/, 'company match ignores case and spacing');
+  assert.equal(notes.has('4'), false, 'free-mail domains are not a match');
+  assert.match(notes.get('5'), /Fay H/);
+});

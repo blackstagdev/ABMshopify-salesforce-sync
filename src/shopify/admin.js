@@ -82,13 +82,20 @@ export function createShopifyAdmin(cfg, fetchImpl = fetch) {
   }
 
   async function graphql(query, variables = {}) {
-    const res = await call(`${base}/graphql.json`, {
-      method: 'POST',
-      body: JSON.stringify({ query, variables }),
-    });
-    const data = await res.json();
-    if (data.errors) throw new Error(`Shopify GraphQL error: ${JSON.stringify(data.errors)}`);
-    return data.data;
+    for (let attempt = 0; ; attempt++) {
+      const res = await call(`${base}/graphql.json`, {
+        method: 'POST',
+        body: JSON.stringify({ query, variables }),
+      });
+      const data = await res.json();
+      // GraphQL rate limiting comes back as a THROTTLED error, not a 429.
+      if (data.errors?.some((e) => e.extensions?.code === 'THROTTLED') && attempt < 10) {
+        await sleep(2000);
+        continue;
+      }
+      if (data.errors) throw new Error(`Shopify GraphQL error: ${JSON.stringify(data.errors)}`);
+      return data.data;
+    }
   }
 
   // Returns the metafield's value, or null when the customer has none.

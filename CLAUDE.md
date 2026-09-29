@@ -14,7 +14,8 @@ Node.js (ESM, Node 22+) service that pushes Shopify customers and orders from al
 - `src/mapping/plan.js`: Shopify payload → plan of Salesforce operations (pure, no I/O)
 - `src/mapping/providerId.js`: Provider_ID__c resolution strategies
 - `src/salesforce/executor.js`: runs a plan against Salesforce
-- `scripts/`: register-webhooks, backfill, requeue
+- `src/mapping/samePractice.js`: flags customers that look like the same practice (company / non-free email domain)
+- `scripts/`: register-webhooks, backfill, requeue, sf-describe, assign-provider-ids (generates Provider IDs for customers without one and writes them to the Shopify metafield, per the workbook's "generated... and written back"; needs write_customers)
 
 ## Salesforce rules (from the field reference workbook, prod org, 18 Sep 2026)
 
