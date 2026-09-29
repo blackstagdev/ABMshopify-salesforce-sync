@@ -109,5 +109,36 @@ export function createShopifyAdmin(cfg, fetchImpl = fetch) {
     return data.customer?.metafield?.value ?? null;
   }
 
-  return { paginate, graphql, getCustomerMetafield };
+  // Every customer with one metafield's value, most recently updated first.
+  async function* listCustomersWithMetafield(namespace, key) {
+    let cursor = null;
+    do {
+      const { customers } = await graphql(
+        `query ($cursor: String, $namespace: String!, $key: String!) {
+          customers(first: 100, after: $cursor, sortKey: UPDATED_AT, reverse: true) {
+            pageInfo { hasNextPage endCursor }
+            nodes {
+              id legacyResourceId displayName
+              defaultEmailAddress { emailAddress }
+              defaultAddress { company }
+              metafield(namespace: $namespace, key: $key) { value }
+            }
+          }
+        }`,
+        { cursor, namespace, key },
+      );
+      yield customers.nodes.map((n) => ({
+        gid: n.id,
+        id: n.legacyResourceId,
+        name: n.displayName,
+        email: n.defaultEmailAddress?.emailAddress ?? null,
+        company: n.defaultAddress?.company?.trim() || null,
+        rawValue: n.metafield?.value ?? null,
+        providerId: n.metafield?.value?.trim() || null,
+      }));
+      cursor = customers.pageInfo.hasNextPage ? customers.pageInfo.endCursor : null;
+    } while (cursor);
+  }
+
+  return { paginate, graphql, getCustomerMetafield, listCustomersWithMetafield };
 }

@@ -37,35 +37,10 @@ const shopify = createShopifyAdmin(config.shopify);
 // 1. Read every customer, so new IDs are unique and same-practice matches
 //    can be spotted across the whole store.
 const all = [];
-let cursor = null;
-do {
-  const { customers } = await shopify.graphql(
-    `query ($cursor: String, $namespace: String!, $key: String!) {
-      customers(first: 100, after: $cursor, sortKey: UPDATED_AT, reverse: true) {
-        pageInfo { hasNextPage endCursor }
-        nodes {
-          id legacyResourceId displayName
-          defaultEmailAddress { emailAddress }
-          defaultAddress { company }
-          metafield(namespace: $namespace, key: $key) { value }
-        }
-      }
-    }`,
-    { cursor, namespace, key },
-  );
-  for (const n of customers.nodes) {
-    all.push({
-      gid: n.id,
-      id: n.legacyResourceId,
-      name: n.displayName,
-      email: n.defaultEmailAddress?.emailAddress ?? null,
-      company: n.defaultAddress?.company?.trim() || null,
-      providerId: n.metafield?.value?.trim() || null,
-    });
-  }
-  cursor = customers.pageInfo.hasNextPage ? customers.pageInfo.endCursor : null;
+for await (const page of shopify.listCustomersWithMetafield(namespace, key)) {
+  all.push(...page);
   process.stderr.write(`\rRead ${all.length} customers...`);
-} while (cursor);
+}
 process.stderr.write('\n');
 
 // 2. Pick the batch and generate IDs.

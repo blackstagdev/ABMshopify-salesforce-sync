@@ -122,9 +122,22 @@ export function createDb({ databaseUrl, databaseSsl }) {
     return rowCount;
   }
 
+  // The most recent customer event per Shopify customer id.
+  async function latestCustomerEvents(customerIds) {
+    if (customerIds.length === 0) return new Map();
+    const { rows } = await pool.query(
+      `SELECT DISTINCT ON (payload->>'id') payload->>'id' AS customer_id, id, status, processed_at, last_error
+       FROM shopify_events
+       WHERE topic LIKE 'customers/%' AND payload->>'id' = ANY($1)
+       ORDER BY payload->>'id', id DESC`,
+      [customerIds.map(String)],
+    );
+    return new Map(rows.map((r) => [r.customer_id, r]));
+  }
+
   async function ping() {
     await pool.query('SELECT 1');
   }
 
-  return { pool, migrate, insertEvent, claimEvents, finishEvent, retryEvent, listEvents, getEvent, countByStatus, requeue, ping };
+  return { pool, migrate, insertEvent, claimEvents, finishEvent, retryEvent, listEvents, getEvent, countByStatus, requeue, latestCustomerEvents, ping };
 }
