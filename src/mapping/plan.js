@@ -3,19 +3,28 @@
 // which is what makes dry-run mode possible.
 //
 // Field names and lengths come from the Salesforce field reference workbook
-// (production org, 18 Sep 2026). Never add Salesforce-maintained fields
-// (order counts, revenue, dates) or the guarded status/owner fields here.
+// (Lead, Account, Contact, Provider Order, Order Product tabs). Never add
+// Salesforce-maintained fields (order counts, revenue, dates), owner fields,
+// Fulfilment_Status__c (DO NOT SEND) or anything AlphaSync: this store is
+// the Alpha BioMed line only.
 import { resolveProviderId } from './providerId.js';
 
 const CUSTOMER_TOPICS = new Set(['customers/create', 'customers/update']);
 const ORDER_TOPICS = new Set(['orders/create', 'orders/updated', 'orders/paid', 'orders/cancelled']);
 
+// "Send true once payment is received": refunded orders were paid first.
+const PAID_STATUSES = new Set(['paid', 'partially_refunded', 'refunded']);
+
+export function isOrderTopic(topic) {
+  return ORDER_TOPICS.has(topic);
+}
+
 export function buildPlan(topic, payload, opts, context = {}) {
   if (CUSTOMER_TOPICS.has(topic)) {
-    return planForCustomer({ customer: payload, address: payload.default_address, email: payload.email, phone: payload.phone }, opts, context);
+    return planForCustomer({ customer: payload, address: payload.default_address, email: payload.email, phone: payload.phone }, opts, context, {});
   }
   if (ORDER_TOPICS.has(topic)) {
-    return planForOrder(payload, opts, context);
+    return planForOrder(topic, payload, opts, context);
   }
   return null;
 }
@@ -27,26 +36,49 @@ export function customerIdFor(topic, payload) {
   return null;
 }
 
-function planForOrder(order, opts, context) {
+function planForOrder(topic, order, opts, context) {
   const customer = order.customer || null;
-  const plan = planForCustomer({
-    customer,
-    address: order.billing_address || customer?.default_address,
-    email: order.email || order.contact_email || customer?.email,
-    phone: order.phone || customer?.phone || order.billing_address?.phone,
-  }, opts, context);
+  const providerId = resolveProviderId(customer, opts, context);
 
-  const preview = mapOrder(order, opts);
-  if (opts.orderSyncEnabled) {
-    plan.ops.push({ op: 'upsertOrder', order: preview });
+  // With a Provider ID, the practice and contact are refreshed first so the
+  // order can be linked. Without one, the order is still sent but unlinked:
+  // Salesforce keeps it in an exception queue until someone links it, and
+  // this service links it itself once the customer gets a Provider ID.
+  let plan;
+  if (providerId.value) {
+    plan = planForCustomer({
+      customer,
+      address: order.billing_address || customer?.default_address,
+      email: order.email || order.contact_email || customer?.email,
+      phone: order.phone || customer?.phone || order.billing_address?.phone,
+    }, opts, context, { isOrder: true, fromNewOrder: topic === 'orders/create' });
   } else {
-    plan.warnings.push('Order not sent: ORDER_SYNC_ENABLED is false until the Provider_Order__c fields are confirmed');
-    plan.orderPreview = preview;
+    plan = { ops: [], warnings: [`Order sent without a Provider (unlinked): ${providerId.reason}`], blockers: [] };
+  }
+
+  const providerOrder = mapProviderOrder(order, opts, context);
+  plan.blockers.push(...providerOrder.blockers);
+  const op = {
+    op: 'upsertOrder',
+    shopifyOrderId: String(order.id),
+    shopifyCustomerId: customer?.id != null ? String(customer.id) : null,
+    orderNumber: order.name,
+    linked: Boolean(providerId.value),
+    cancelled: Boolean(order.cancelled_at),
+    fields: providerOrder.fields,
+    lines: providerOrder.lines,
+  };
+
+  if (opts.orderSyncEnabled) {
+    plan.ops.push(op);
+  } else {
+    plan.warnings.push('Order not sent: ORDER_SYNC_ENABLED is false');
+    plan.orderPreview = op;
   }
   return plan;
 }
 
-function planForCustomer({ customer, address, email, phone }, opts, context) {
+function planForCustomer({ customer, address, email, phone }, opts, context, { isOrder = false, fromNewOrder = false }) {
   const plan = { ops: [], warnings: [], blockers: [] };
 
   const providerId = resolveProviderId(customer, opts, context);
@@ -71,13 +103,22 @@ function planForCustomer({ customer, address, email, phone }, opts, context) {
     ...billingAddress(address),
   });
 
+  // Requested by the Salesforce team: Prospect until the practice has
+  // ordered, then Active. Lapsed is left to reps. On updates the executor
+  // decides whether it may write it (the Account trigger rejects the
+  // integration once an Alpha BioMed Owner is assigned).
+  const abmStatus = abmStatusFor(context, isOrder);
+
   plan.ops.push({
     op: 'upsertAccount',
     providerId: providerId.value,
     // Name is only set when the Account is created, so a name the sales
     // team has tidied up in Salesforce is not overwritten by Shopify.
-    createFields: { Name: text(accountName, 255), ...accountUpdate },
+    createFields: compact({ Name: text(accountName, 255), ...accountUpdate, ABM_Status__c: abmStatus }),
     updateFields: accountUpdate,
+    abmStatus,
+    fromNewOrder,
+    shopifyCustomerId: customer?.id != null ? String(customer.id) : null,
   });
 
   if (validEmail) {
@@ -104,33 +145,61 @@ function planForCustomer({ customer, address, email, phone }, opts, context) {
   return plan;
 }
 
-// A neutral order shape. It becomes a Provider_Order__c payload once that
-// object's fields are confirmed (see salesforce/executor.js).
-export function mapOrder(order, opts) {
-  return compact({
-    shopifyOrderId: String(order.id),
-    orderNumber: order.name,
-    lineOfBusiness: opts.lineOfBusiness,
-    createdAt: order.created_at,
-    processedAt: order.processed_at,
-    cancelledAt: order.cancelled_at,
-    currency: order.currency,
-    totalPrice: order.current_total_price ?? order.total_price,
-    subtotalPrice: order.current_subtotal_price ?? order.subtotal_price,
-    totalTax: order.current_total_tax ?? order.total_tax,
-    totalDiscounts: order.current_total_discounts ?? order.total_discounts,
-    financialStatus: order.financial_status,
-    fulfillmentStatus: order.fulfillment_status,
-    lineItems: (order.line_items || []).map((li) => compact({
-      sku: li.sku,
-      title: li.title,
-      variantTitle: li.variant_title,
-      productId: li.product_id != null ? String(li.product_id) : undefined,
-      variantId: li.variant_id != null ? String(li.variant_id) : undefined,
-      quantity: li.quantity,
-      price: li.price,
-    })),
+function abmStatusFor(context, isOrder) {
+  if (isOrder) return 'Active';
+  if (context.numberOfOrders == null) return undefined;
+  return context.numberOfOrders > 0 ? 'Active' : 'Prospect';
+}
+
+// Provider Order and its Order Product lines (Provider Order / Order Product
+// tabs). Neither object has an external ID, so the executor keeps the
+// Salesforce Ids to update them later.
+export function mapProviderOrder(order, opts, context = {}) {
+  const blockers = [];
+  const cancelled = Boolean(order.cancelled_at);
+
+  // The order total, not calculated from the lines. Shopify's current total
+  // already reflects edits and refunds. A cancelled order counts for nothing.
+  const amount = cancelled ? 0 : money(order.current_total_price ?? order.total_price);
+  if (amount === undefined) blockers.push('Order has no total');
+
+  // The date the practice placed the order, as YYYY-MM-DD. Shopify sends
+  // created_at in the store's time zone, so its date part is the local date.
+  const orderDate = /^\d{4}-\d{2}-\d{2}/.test(order.created_at ?? '') ? order.created_at.slice(0, 10) : undefined;
+  if (!orderDate) blockers.push('Order has no created_at date');
+
+  const fields = compact({
+    Line_of_Business__c: opts.lineOfBusiness,
+    Order_Amount__c: amount,
+    Order_Date__c: orderDate,
+    // The customer's first Shopify order is New, later ones Reorder. Guests
+    // and unknown history are left blank, which Salesforce treats as a real
+    // order.
+    Order_Type__c: order.customer && typeof context.isFirstOrder === 'boolean'
+      ? (context.isFirstOrder ? 'New' : 'Reorder')
+      : undefined,
+    Paid__c: PAID_STATUSES.has(order.financial_status),
   });
+
+  const lines = (order.line_items || []).map((li) => {
+    const quantity = Number(li.current_quantity ?? li.quantity ?? 0);
+    const orderedQuantity = Number(li.quantity) || quantity || 1;
+    const discount = (li.discount_allocations || []).reduce((sum, d) => sum + Number(d.amount || 0), 0);
+    const name = [clean(li.title), clean(li.variant_title)].filter(Boolean).join(' - ') || 'Unnamed product';
+    return {
+      shopifyLineId: String(li.id),
+      // Removed in an order edit, or fully refunded.
+      remove: quantity <= 0,
+      fields: compact({
+        Quantity__c: quantity,
+        // "Price for one unit as charged on this order": after discounts.
+        Unit_Price__c: money(Number(li.price) - discount / orderedQuantity),
+        Product_Name__c: text(name, 255),
+      }),
+    };
+  });
+
+  return { fields, lines, blockers };
 }
 
 // Compound address fields are read only; send the components.
@@ -167,6 +236,11 @@ function checkEmail(email, plan) {
     return undefined;
   }
   return value;
+}
+
+function money(value) {
+  const n = Number(value);
+  return value === null || value === undefined || value === '' || !Number.isFinite(n) ? undefined : Math.round(n * 100) / 100;
 }
 
 function clean(value) {

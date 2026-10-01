@@ -18,13 +18,32 @@ A customer becomes:
 - an **Account** upserted on `Provider_ID__c` with Name (set on create only), `Shopify_ID__c` (the Shopify customer id), phone, `Primary_Email__c` and billing address, and
 - a **Contact** on that Account, matched on Account + Email.
 
-An order syncs its customer the same way. The order itself is only previewed until `Provider_Order__c` is mapped.
+**Alpha BioMed Status** (`ABM_Status__c`) is **Prospect** for a customer with no Shopify orders and **Active** once they have one. It's set when the Account is created. Later it's updated only if no Alpha BioMed Owner is assigned, and only forward: it never goes back from Active, and a rep's Lapsed is kept until a new order arrives.
+
+An **order** (when `ORDER_SYNC_ENABLED=true`) syncs its customer the same way, then becomes a **Provider Order** with one **Order Product** per line:
+
+| Provider Order field | From Shopify |
+|---|---|
+| `Line_of_Business__c` | `Alpha BioMed` |
+| `Order_Amount__c` | current total (tax and shipping included, after edits and refunds); `0` once cancelled |
+| `Order_Date__c` | order date (store time zone) |
+| `Order_Type__c` | `New` for the customer's first order, `Reorder` after |
+| `Paid__c` | paid, partially refunded or refunded |
+| `Account__c` | the practice, or blank (unlinked) when the customer has no Provider ID; linked automatically later |
+
+| Order Product field | From Shopify |
+|---|---|
+| `Quantity__c` | current quantity. Lines at 0 are deleted. |
+| `Unit_Price__c` | unit price after that line's discounts |
+| `Product_Name__c` | product title, plus the variant |
+
+Neither object has an external ID, so the `salesforce_orders` table remembers which Salesforce records each Shopify order became. Re-sent orders are updated, not duplicated. An order cancelled before it was ever synced is skipped.
 
 The service never sends:
 
-- Salesforce-maintained fields (revenue, order counts, order dates)
-- guarded status and owner fields (`ABM_Status__c`, `AlphaSync_Status__c`, `ABM_Owner__c`, `Sync_Owner__c`)
-- `OwnerId`
+- Salesforce-maintained fields (revenue, order counts, order dates on Account; Total Price on lines)
+- `AlphaSync_Status__c`, `ABM_Owner__c`, `Sync_Owner__c`, `OwnerId`, or any AlphaSync data
+- `Fulfilment_Status__c` (DO NOT SEND), `Order_For__c`, `Product_Category__c` (no source in Shopify yet)
 
 ## Event statuses
 
@@ -39,12 +58,11 @@ The service never sends:
 
 Salesforce 429 and 5xx errors and network errors are retried with backoff (30 s doubling to 1 h, up to `WORKER_MAX_ATTEMPTS`).
 
-## Open decisions (blocking live sync)
+## Provider ID and open items
 
-1. **Provider ID rule.** How a Shopify customer gets its `Provider_ID__c`. The source is now the Shopify customer metafield "Provider ID": set `PROVIDER_ID_STRATEGY=customer_metafield` and `PROVIDER_ID_METAFIELD=<namespace.key>`. The app reads it from the Shopify Admin API while processing each event. Customers without a value are blocked. Before going live, check that these values match the Provider IDs already on existing Salesforce Accounts; otherwise the sync will create duplicate practices.
-2. **`Provider_Order__c` fields.** These aren't in the workbook. Once they are, implement `upsertOrder` in [src/salesforce/executor.js](src/salesforce/executor.js) and set `ORDER_SYNC_ENABLED=true`.
-3. **Lead or Account?** The service creates Accounts and Contacts, not Leads. Confirm that this is what the Salesforce team wants for Shopify customers.
-4. **Integration user.** It needs a dedicated user and Connected App (client credentials flow), not a person's login.
+- **Provider ID** is the practice's GHL contact ID, stored in the Shopify customer metafield `custom.provider_id` (`PROVIDER_ID_STRATEGY=customer_metafield`, `PROVIDER_ID_METAFIELD=custom.provider_id`). Customers without one are blocked; their orders go out unlinked. Check with `npm run check-provider-ids`.
+- **Product Category:** Shopify has no source for the Salesforce category names, so it's left blank, and "Most Recent Category" on the provider stays empty.
+- **Returns:** none are sent separately. Refunds lower `Order_Amount__c`, because it's the current total. The workbook says the Return sign isn't agreed yet.
 
 ## Configuration
 
@@ -59,10 +77,10 @@ npm start                                  # needs DATABASE_URL
 npm run register-webhooks                  # subscribe the Shopify app to the topics
 npm run register-webhooks -- --list        # show current subscriptions
 npm run backfill -- --customers            # queue existing customers
-npm run backfill -- --orders --since=2026-01-01
-npm run requeue -- --status=dry_run        # replay after switching to live
-npm run assign-provider-ids                # preview new Provider IDs for the next 100 customers without one
-npm run assign-provider-ids -- --apply     # write them to the Shopify metafield and queue those customers
+npm run backfill -- --orders --since=2026-01-01 --limit=100
+npm run requeue -- --ids=12,13             # replay specific events
+npm run requeue -- --status=synced --latest  # re-send the newest event per customer/order (e.g. to fill in a new field)
+npm run check-provider-ids                 # who has a Provider ID, issues, and latest sync status
 npm run sf-describe                        # print Provider_Order__c and other order objects' fields
 npm run sf-describe -- Account --json      # any object, as JSON
 npm run sf-describe -- --list              # every custom object in the org

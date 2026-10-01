@@ -1,9 +1,9 @@
-import { buildPlan, customerIdFor } from './mapping/plan.js';
+import { buildPlan, customerIdFor, isOrderTopic } from './mapping/plan.js';
 import { executePlan } from './salesforce/executor.js';
 import { BlockedError } from './errors.js';
 
 // Returns { status, result } for a stored event, or throws.
-export async function processEvent(event, { mode, mapping, salesforce, sf, shopify }) {
+export async function processEvent(event, { mode, mapping, salesforce, sf, shopify, store }) {
   const context = await lookupContext(event, mapping, shopify);
   const plan = buildPlan(event.topic, event.payload, mapping, context);
   if (!plan) {
@@ -18,13 +18,13 @@ export async function processEvent(event, { mode, mapping, salesforce, sf, shopi
     throw new BlockedError(plan.blockers, plan);
   }
 
-  const outcome = await executePlan(plan, sf, salesforce);
+  const outcome = await executePlan(plan, sf, salesforce, store);
   return { status: 'synced', result: { ...plan, outcome } };
 }
 
 // Reads from Shopify only (never Salesforce), so it also runs in dry run.
-// The value is read at processing time, so a Provider ID added to a
-// customer after the event arrived is picked up on requeue.
+// Values are read at processing time, so a Provider ID added to a customer
+// after the event arrived is picked up on requeue.
 async function lookupContext(event, mapping, shopify) {
   if (mapping.providerIdStrategy !== 'customer_metafield') return {};
   const customerId = customerIdFor(event.topic, event.payload);
@@ -32,7 +32,11 @@ async function lookupContext(event, mapping, shopify) {
 
   const [namespace, key] = splitMetafield(mapping.providerIdMetafield);
   if (!shopify) throw new BlockedError('Shopify Admin API is not configured (SHOPIFY_SHOP_DOMAIN and credentials)');
-  return { providerIdMetafield: await shopify.getCustomerMetafield(customerId, namespace, key) };
+  const { firstOrderId, ...context } = await shopify.getCustomerContext(customerId, namespace, key);
+  if (isOrderTopic(event.topic) && firstOrderId) {
+    context.isFirstOrder = String(firstOrderId) === String(event.payload.id);
+  }
+  return context;
 }
 
 function splitMetafield(value) {

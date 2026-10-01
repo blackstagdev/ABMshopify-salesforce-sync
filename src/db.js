@@ -33,7 +33,64 @@ export function createDb({ databaseUrl, databaseSsl }) {
         processed_at    TIMESTAMPTZ
       );
       CREATE INDEX IF NOT EXISTS shopify_events_queue_idx ON shopify_events (status, next_attempt_at);
+
+      -- Provider Order and Order Product have no external ID in Salesforce,
+      -- so this is how a Shopify order is found again to update it rather
+      -- than create a duplicate. lines maps Shopify line id -> Salesforce Id.
+      CREATE TABLE IF NOT EXISTS salesforce_orders (
+        shopify_order_id    TEXT PRIMARY KEY,
+        salesforce_id       TEXT NOT NULL,
+        shopify_customer_id TEXT,
+        account_id          TEXT,
+        lines               JSONB NOT NULL DEFAULT '{}',
+        synced_at           TIMESTAMPTZ NOT NULL DEFAULT now()
+      );
+      CREATE INDEX IF NOT EXISTS salesforce_orders_unlinked_idx
+        ON salesforce_orders (shopify_customer_id) WHERE account_id IS NULL;
     `);
+  }
+
+  async function getOrderLink(shopifyOrderId) {
+    const { rows } = await pool.query('SELECT * FROM salesforce_orders WHERE shopify_order_id = $1', [shopifyOrderId]);
+    return rows[0] ?? null;
+  }
+
+  async function saveOrderLink({ shopifyOrderId, salesforceId, shopifyCustomerId, accountId, lines }) {
+    await pool.query(
+      `INSERT INTO salesforce_orders (shopify_order_id, salesforce_id, shopify_customer_id, account_id, lines, synced_at)
+       VALUES ($1, $2, $3, $4, $5, now())
+       ON CONFLICT (shopify_order_id) DO UPDATE
+       SET salesforce_id = $2, shopify_customer_id = $3, account_id = $4, lines = $5, synced_at = now()`,
+      [shopifyOrderId, salesforceId, shopifyCustomerId, accountId, lines],
+    );
+  }
+
+  // Orders sent before their customer had a Provider ID.
+  async function unlinkedOrdersForCustomer(shopifyCustomerId) {
+    const { rows } = await pool.query(
+      'SELECT * FROM salesforce_orders WHERE shopify_customer_id = $1 AND account_id IS NULL',
+      [shopifyCustomerId],
+    );
+    return rows;
+  }
+
+  // Requeues only the newest event per customer / per order with this
+  // status, so replaying never applies older data over newer data.
+  async function requeueLatest(status) {
+    const { rowCount } = await pool.query(
+      `UPDATE shopify_events
+       SET status = 'pending', attempts = 0, next_attempt_at = now(), last_error = NULL, locked_at = NULL
+       WHERE id IN (
+         SELECT id FROM (
+           SELECT DISTINCT ON (split_part(topic, '/', 1), payload->>'id') id, status
+           FROM shopify_events
+           ORDER BY split_part(topic, '/', 1), payload->>'id', id DESC
+         ) latest
+         WHERE status = $1
+       )`,
+      [status],
+    );
+    return rowCount;
   }
 
   // Shopify retries deliveries, so the webhook id makes inserts idempotent.
@@ -139,5 +196,8 @@ export function createDb({ databaseUrl, databaseSsl }) {
     await pool.query('SELECT 1');
   }
 
-  return { pool, migrate, insertEvent, claimEvents, finishEvent, retryEvent, listEvents, getEvent, countByStatus, requeue, latestCustomerEvents, ping };
+  return {
+    pool, migrate, insertEvent, claimEvents, finishEvent, retryEvent, listEvents, getEvent, countByStatus,
+    requeue, requeueLatest, latestCustomerEvents, getOrderLink, saveOrderLink, unlinkedOrdersForCustomer, ping,
+  };
 }

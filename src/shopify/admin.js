@@ -98,15 +98,26 @@ export function createShopifyAdmin(cfg, fetchImpl = fetch) {
     }
   }
 
-  // Returns the metafield's value, or null when the customer has none.
-  async function getCustomerMetafield(customerId, namespace, key) {
+  // What the mapping needs about a customer that webhooks don't carry: the
+  // Provider ID metafield, how many orders they have (Alpha BioMed Status)
+  // and which order was their first (Order Type New vs Reorder).
+  async function getCustomerContext(customerId, namespace, key) {
     const data = await graphql(
       `query ($id: ID!, $namespace: String!, $key: String!) {
-        customer(id: $id) { metafield(namespace: $namespace, key: $key) { value } }
+        customer(id: $id) {
+          numberOfOrders
+          metafield(namespace: $namespace, key: $key) { value }
+          orders(first: 1, sortKey: CREATED_AT) { nodes { legacyResourceId } }
+        }
       }`,
       { id: `gid://shopify/Customer/${customerId}`, namespace, key },
     );
-    return data.customer?.metafield?.value ?? null;
+    const c = data.customer;
+    return {
+      providerIdMetafield: c?.metafield?.value ?? null,
+      numberOfOrders: c ? Number(c.numberOfOrders) : null,
+      firstOrderId: c?.orders?.nodes?.[0]?.legacyResourceId ?? null,
+    };
   }
 
   // Every customer with one metafield's value, most recently updated first.
@@ -140,5 +151,5 @@ export function createShopifyAdmin(cfg, fetchImpl = fetch) {
     } while (cursor);
   }
 
-  return { paginate, graphql, getCustomerMetafield, listCustomersWithMetafield };
+  return { paginate, graphql, getCustomerContext, listCustomersWithMetafield };
 }

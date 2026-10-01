@@ -84,32 +84,96 @@ test('customer without a usable email gets no Contact', () => {
   assert.match(plan.warnings.join(), /No usable email/);
 });
 
-test('order syncs its customer and previews the order while order sync is off', () => {
-  const order = {
-    id: 5001,
-    name: '#1001',
-    email: 'front.desk@sunriseclinic.com',
-    created_at: '2026-09-20T10:00:00Z',
-    currency: 'USD',
-    total_price: '250.00',
-    financial_status: 'paid',
-    customer,
-    billing_address: customer.default_address,
-    line_items: [{ sku: 'ABM-1', title: 'Kit', quantity: 2, price: '125.00', product_id: 9, variant_id: 10 }],
-  };
-  const plan = buildPlan('orders/create', order, baseOpts);
-  assert.deepEqual(plan.ops.map((o) => o.op), ['upsertAccount', 'upsertContact']);
-  assert.equal(plan.orderPreview.shopifyOrderId, '5001');
-  assert.equal(plan.orderPreview.lineOfBusiness, 'Alpha BioMed');
-  assert.equal(plan.orderPreview.lineItems[0].productId, '9');
+const order = {
+  id: 5001,
+  name: '#1001',
+  email: 'front.desk@sunriseclinic.com',
+  created_at: '2026-09-20T22:30:00-07:00',
+  total_price: '260.00',
+  current_total_price: '240.00',
+  financial_status: 'paid',
+  fulfillment_status: 'fulfilled',
+  customer,
+  billing_address: customer.default_address,
+  line_items: [
+    { id: 11, title: 'Kit', variant_title: '5mg', quantity: 2, current_quantity: 2, price: '125.00', discount_allocations: [{ amount: '10.00' }] },
+    { id: 12, title: 'Removed item', quantity: 1, current_quantity: 0, price: '20.00' },
+  ],
+};
+const orderOpts = { ...baseOpts, orderSyncEnabled: true };
 
-  const enabled = buildPlan('orders/create', order, { ...baseOpts, orderSyncEnabled: true });
-  assert.equal(enabled.ops.at(-1).op, 'upsertOrder');
+test('order with a Provider ID: Account (Active) + Contact + Provider Order with lines', () => {
+  const plan = buildPlan('orders/create', order, orderOpts, { isFirstOrder: true });
+  assert.deepEqual(plan.blockers, []);
+  assert.deepEqual(plan.ops.map((o) => o.op), ['upsertAccount', 'upsertContact', 'upsertOrder']);
+
+  const [account, , op] = plan.ops;
+  assert.equal(account.createFields.ABM_Status__c, 'Active');
+  assert.equal(account.abmStatus, 'Active');
+  assert.equal(account.fromNewOrder, true);
+  assert.equal('ABM_Status__c' in account.updateFields, false, 'status on update is decided by the executor');
+
+  assert.equal(op.linked, true);
+  assert.equal(op.shopifyOrderId, '5001');
+  assert.deepEqual(op.fields, {
+    Line_of_Business__c: 'Alpha BioMed',
+    Order_Amount__c: 240,
+    Order_Date__c: '2026-09-20',
+    Order_Type__c: 'New',
+    Paid__c: true,
+  });
+  assert.deepEqual(op.lines[0], {
+    shopifyLineId: '11',
+    remove: false,
+    fields: { Quantity__c: 2, Unit_Price__c: 120, Product_Name__c: 'Kit - 5mg' },
+  });
+  assert.equal(op.lines[1].remove, true);
 });
 
-test('guest checkout order is blocked for lack of a customer', () => {
-  const plan = buildPlan('orders/create', { id: 1, email: 'a@b.com', line_items: [] }, baseOpts);
-  assert.equal(plan.blockers.length, 1);
+test('orders never carry Fulfilment Status, owner or AlphaSync fields', () => {
+  const plan = buildPlan('orders/updated', order, orderOpts, { isFirstOrder: false });
+  const sent = plan.ops.flatMap((o) => Object.keys({ ...o.createFields, ...o.updateFields, ...o.fields, ...o.lines?.[0]?.fields }));
+  for (const field of sent) assert.doesNotMatch(field, /Fulfilment|OwnerId|Owner__c|AlphaSync|Sync_/, field);
+  assert.equal(plan.ops.at(-1).fields.Order_Type__c, 'Reorder');
+  assert.equal(plan.ops[0].fromNewOrder, false);
+});
+
+test('order sync switched off: customer still synced, order only previewed', () => {
+  const plan = buildPlan('orders/create', order, baseOpts, { isFirstOrder: true });
+  assert.deepEqual(plan.ops.map((o) => o.op), ['upsertAccount', 'upsertContact']);
+  assert.equal(plan.orderPreview.fields.Order_Amount__c, 240);
+});
+
+test('order without a Provider ID, or a guest checkout, is sent unlinked', () => {
+  const noId = buildPlan('orders/create', { ...order, customer: { ...customer, tags: '' } }, orderOpts, { isFirstOrder: true });
+  assert.deepEqual(noId.blockers, []);
+  assert.deepEqual(noId.ops.map((o) => o.op), ['upsertOrder']);
+  assert.equal(noId.ops[0].linked, false);
+  assert.match(noId.warnings.join(), /unlinked/);
+
+  const guest = buildPlan('orders/create', { ...order, customer: null }, orderOpts);
+  assert.deepEqual(guest.ops.map((o) => o.op), ['upsertOrder']);
+  assert.equal('Order_Type__c' in guest.ops[0].fields, false, 'no Order Type without a customer');
+});
+
+test('Paid, unknown order history and cancelled orders', () => {
+  const pending = buildPlan('orders/updated', { ...order, financial_status: 'pending' }, orderOpts).ops.at(-1);
+  assert.equal(pending.fields.Paid__c, false);
+  assert.equal('Order_Type__c' in pending.fields, false, 'no Order Type when the first order is unknown');
+
+  const refunded = buildPlan('orders/updated', { ...order, financial_status: 'refunded' }, orderOpts).ops.at(-1);
+  assert.equal(refunded.fields.Paid__c, true);
+
+  const cancelled = buildPlan('orders/updated', { ...order, cancelled_at: '2026-09-21T10:00:00-07:00' }, orderOpts).ops.at(-1);
+  assert.equal(cancelled.cancelled, true);
+  assert.equal(cancelled.fields.Order_Amount__c, 0);
+});
+
+test('customer status: Prospect without orders, Active with orders, unset when unknown', () => {
+  const status = (context) => buildPlan('customers/update', customer, baseOpts, context).ops[0].createFields.ABM_Status__c;
+  assert.equal(status({ numberOfOrders: 0 }), 'Prospect');
+  assert.equal(status({ numberOfOrders: 3 }), 'Active');
+  assert.equal(status({}), undefined);
 });
 
 test('unhandled topics return no plan', () => {

@@ -3,6 +3,7 @@
 //
 //   npm run backfill -- --customers
 //   npm run backfill -- --orders --since=2026-01-01
+//   npm run backfill -- --orders --limit=100     stop after 100 new records
 //
 // Orders older than 60 days need the read_all_orders scope.
 import { config } from '../src/config.js';
@@ -13,9 +14,10 @@ const args = process.argv.slice(2);
 const doCustomers = args.includes('--customers');
 const doOrders = args.includes('--orders');
 const since = args.find((a) => a.startsWith('--since='))?.split('=')[1];
+const limit = Number(args.find((a) => a.startsWith('--limit='))?.split('=')[1] ?? Infinity);
 
 if (!doCustomers && !doOrders) {
-  console.error('Pass --customers and/or --orders (optionally --since=YYYY-MM-DD).');
+  console.error('Pass --customers and/or --orders (optionally --since=YYYY-MM-DD, --limit=N).');
   process.exit(1);
 }
 
@@ -23,12 +25,14 @@ const db = createDb(config);
 await db.migrate();
 const shopify = createShopifyAdmin(config.shopify);
 const sinceParam = since ? `&created_at_min=${encodeURIComponent(new Date(since).toISOString())}` : '';
+const pageSize = Math.min(250, limit);
 
 async function load(label, path, key, topic) {
   let queued = 0;
   let skipped = 0;
   for await (const page of shopify.paginate(path, key)) {
     for (const record of page) {
+      if (queued >= limit) break;
       // Same record + same updated_at = same event, so re-runs do not duplicate.
       const inserted = await db.insertEvent({
         webhookId: `backfill:${key}:${record.id}:${record.updated_at}`,
@@ -39,10 +43,11 @@ async function load(label, path, key, topic) {
       inserted ? queued++ : skipped++;
     }
     console.log(`${label}: ${queued} queued, ${skipped} already queued`);
+    if (queued >= limit) break;
   }
 }
 
-if (doCustomers) await load('Customers', `/customers.json?limit=250${sinceParam}`, 'customers', 'customers/update');
-if (doOrders) await load('Orders', `/orders.json?status=any&limit=250${sinceParam}`, 'orders', 'orders/updated');
+if (doCustomers) await load('Customers', `/customers.json?limit=${pageSize}${sinceParam}`, 'customers', 'customers/update');
+if (doOrders) await load('Orders', `/orders.json?status=any&limit=${pageSize}${sinceParam}`, 'orders', 'orders/updated');
 
 await db.pool.end();

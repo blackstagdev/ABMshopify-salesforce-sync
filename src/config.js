@@ -41,6 +41,10 @@ export const config = {
     clientSecret: env.SF_CLIENT_SECRET,
     apiVersion: env.SF_API_VERSION || 'v67.0',
     accountRecordType: env.SF_ACCOUNT_RECORD_TYPE || 'Customer',
+    // Object API names from the Provider Order / Order Product tabs. Check
+    // them with `npm run sf-describe -- --list`.
+    orderObject: env.SF_ORDER_OBJECT || 'Provider_Order__c',
+    orderLineObject: env.SF_ORDER_LINE_OBJECT || 'Order_Product__c',
   },
 
   mapping: {
@@ -53,7 +57,7 @@ export const config = {
     // used by the customer_metafield strategy.
     providerIdMetafield: env.PROVIDER_ID_METAFIELD || '',
     lineOfBusiness: env.SHOPIFY_LINE_OF_BUSINESS || 'Alpha BioMed',
-    // Provider_Order__c fields are not documented yet.
+    // Switch for sending Provider Orders, so providers can be loaded first.
     orderSyncEnabled: bool(env.ORDER_SYNC_ENABLED),
   },
 

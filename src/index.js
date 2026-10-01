@@ -42,6 +42,7 @@ const worker = config.worker.enabled
         salesforce: config.salesforce,
         sf,
         shopify,
+        store: db,
       }),
       ...config.worker,
     })
