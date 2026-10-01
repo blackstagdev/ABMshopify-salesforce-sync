@@ -121,8 +121,8 @@ test('only 429 and 5xx Salesforce errors are retried; backoff is capped', () => 
 test('processor looks up Provider ID, order count and first order from Shopify, even in dry run', async () => {
   const lookups = [];
   const shopify = {
-    async getCustomerContext(id, namespace, key) {
-      lookups.push([id, namespace, key]);
+    async getCustomerContext(id, namespace, key, { withFirstOrder }) {
+      lookups.push([id, namespace, key, withFirstOrder]);
       return { providerIdMetafield: 'PROV-1', numberOfOrders: 2, firstOrderId: '900' };
     },
   };
@@ -131,13 +131,14 @@ test('processor looks up Provider ID, order count and first order from Shopify, 
 
   const { status, result } = await processEvent(event, { mode: 'dry_run', mapping, shopify });
   assert.equal(status, 'dry_run');
-  assert.deepEqual(lookups, [[42, 'custom', 'provider_id']]);
+  assert.deepEqual(lookups, [[42, 'custom', 'provider_id', false]], 'no order lookup (read_orders) for customer events');
   assert.equal(result.ops[0].providerId, 'PROV-1');
   assert.equal(result.ops[0].createFields.ABM_Status__c, 'Active');
 
   const orderEvent = { topic: 'orders/create', payload: { id: 901, created_at: '2026-10-01T09:00:00-07:00', total_price: '10', customer: { id: 42, last_name: 'B' }, email: 'a@b.com', line_items: [] } };
   const order = (await processEvent(orderEvent, { mode: 'dry_run', mapping, shopify })).result.ops.at(-1);
   assert.equal(order.fields.Order_Type__c, 'Reorder', 'order 901 is not the first order (900)');
+  assert.equal(lookups.at(-1)[3], true);
 
   await assert.rejects(
     processEvent(event, { mode: 'dry_run', mapping: { ...mapping, providerIdMetafield: 'provider_id' }, shopify }),

@@ -101,16 +101,18 @@ export function createShopifyAdmin(cfg, fetchImpl = fetch) {
   // What the mapping needs about a customer that webhooks don't carry: the
   // Provider ID metafield, how many orders they have (Alpha BioMed Status)
   // and which order was their first (Order Type New vs Reorder).
-  async function getCustomerContext(customerId, namespace, key) {
+  // The first-order lookup needs the read_orders scope, so it is only asked
+  // for on order events (which can only arrive with that scope).
+  async function getCustomerContext(customerId, namespace, key, { withFirstOrder = false } = {}) {
     const data = await graphql(
-      `query ($id: ID!, $namespace: String!, $key: String!) {
+      `query ($id: ID!, $namespace: String!, $key: String!, $withFirstOrder: Boolean!) {
         customer(id: $id) {
           numberOfOrders
           metafield(namespace: $namespace, key: $key) { value }
-          orders(first: 1, sortKey: CREATED_AT) { nodes { legacyResourceId } }
+          orders(first: 1, sortKey: CREATED_AT) @include(if: $withFirstOrder) { nodes { legacyResourceId } }
         }
       }`,
-      { id: `gid://shopify/Customer/${customerId}`, namespace, key },
+      { id: `gid://shopify/Customer/${customerId}`, namespace, key, withFirstOrder },
     );
     const c = data.customer;
     return {

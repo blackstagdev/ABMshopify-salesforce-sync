@@ -32,8 +32,9 @@ async function lookupContext(event, mapping, shopify) {
 
   const [namespace, key] = splitMetafield(mapping.providerIdMetafield);
   if (!shopify) throw new BlockedError('Shopify Admin API is not configured (SHOPIFY_SHOP_DOMAIN and credentials)');
-  const { firstOrderId, ...context } = await shopify.getCustomerContext(customerId, namespace, key);
-  if (isOrderTopic(event.topic) && firstOrderId) {
+  const isOrder = isOrderTopic(event.topic);
+  const { firstOrderId, ...context } = await shopify.getCustomerContext(customerId, namespace, key, { withFirstOrder: isOrder });
+  if (isOrder && firstOrderId) {
     context.isFirstOrder = String(firstOrderId) === String(event.payload.id);
   }
   return context;
