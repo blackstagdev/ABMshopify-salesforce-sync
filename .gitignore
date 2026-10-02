@@ -9,3 +9,6 @@ node_modules/
 
 # Personal Claude Code settings
 .claude/settings.local.json
+
+# Drafts that contain customer data
+emails/
