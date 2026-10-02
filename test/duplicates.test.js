@@ -32,5 +32,5 @@ test('contact duplicate: lead, other practice, or nothing visible', () => {
 });
 
 test('SOSL special characters are escaped', () => {
-  assert.equal(soslEscape('a+b-c@x.com'), 'a\+b\-c@x.com');
+  assert.equal(soslEscape('a+b-c@x.com'), String.raw`a\+b\-c@x.com`);
 });
