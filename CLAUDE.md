@@ -34,7 +34,7 @@ The current workbook is "Alpha BioMed - Salesforce Field Reference (Lead, Accoun
 - Never write Salesforce-maintained fields (order counts, revenue, order dates, trends) or formula fields.
 - `ABM_Status__c`: the Salesforce team asked on 2026-10-02 for it to be set. A customer with no orders gets Prospect; one with orders gets Active. It's set on create. On update, never when `ABM_Owner__c` is set (the Account trigger rejects the integration user), and only moving forward (Not a customer → Prospect → Active). Lapsed is replaced only by a new order.
 - Don't write `AlphaSync_Status__c`, `ABM_Owner__c`, `Sync_Owner__c` or `OwnerId`. Owner changes need a custom permission.
-- Salesforce has no duplicate blocking or validation rules, so de-duplication happens here (Contact is matched on AccountId + Email).
+- De-duplication happens here (Contact is matched on AccountId + Email). Since about 2026-10-01 the org's duplicate rules **block** (the workbook says Allow), so a practice whose Salesforce Provider ID differs from Shopify's fails with DUPLICATES_DETECTED. Never bypass the rules. `npm run report-duplicates` explains each failure.
 - Resolve record types by DeveloperName at runtime (`Customer`, `Affiliate`), never by hard-coded Id. Send address components, not compound address fields.
 - Truncate text to the field lengths in the workbook. Omit blank values rather than sending empties.
 - **Provider Order / Order Product:**
