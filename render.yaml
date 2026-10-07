@@ -51,6 +51,15 @@ services:
         sync: false
       - key: SF_CLIENT_SECRET
         sync: false
+      # GoHighLevel sub-accounts (leads): Private Integration token + Location ID
+      - key: GHL_ABM_TOKEN
+        sync: false
+      - key: GHL_ABM_LOCATION_ID
+        sync: false
+      - key: GHL_SYNC_TOKEN
+        sync: false
+      - key: GHL_SYNC_LOCATION_ID
+        sync: false
 
 databases:
   - name: shopify-salesforce-sync-db

@@ -17,7 +17,8 @@
     "sf-describe": "node scripts/sf-describe.js",
     "assign-provider-ids": "node scripts/assign-provider-ids.js",
     "check-provider-ids": "node scripts/check-provider-ids.js",
-    "report-duplicates": "node scripts/report-duplicates.js"
+    "report-duplicates": "node scripts/report-duplicates.js",
+    "ghl-explore": "node scripts/ghl-explore.js"
   },
   "dependencies": {
     "express": "^5.1.0",
