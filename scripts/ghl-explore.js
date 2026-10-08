@@ -6,6 +6,8 @@
 //   npm run ghl-explore -- --account=sync             Alpha Sync, stage "New Leads"
 //   npm run ghl-explore -- --account=abm --sample=20  look at more opportunities
 //   npm run ghl-explore -- --account=abm --full       show values unshortened (don't paste these)
+//   npm run ghl-explore -- --account=sync --counts    only the number of opportunities per matching stage
+//   npm run ghl-explore -- --account=sync --pipeline="Blitz - Kent Parramore"   one pipeline only
 //
 // Needs GHL_ABM_TOKEN + GHL_ABM_LOCATION_ID (or GHL_SYNC_...).
 import { createGhlClient, GHL_ACCOUNTS } from '../src/ghl/client.js';
@@ -35,19 +37,31 @@ for (const p of pipelines) {
   for (const s of p.stages ?? []) console.log(`    - ${s.name}  [${s.id}]`);
 }
 
-const matches = pipelines.flatMap((p) => (p.stages ?? [])
-  .filter((s) => s.name.trim().toLowerCase() === stageName.toLowerCase())
-  .map((s) => ({ pipeline: p, stage: s })));
+const pipelineFilter = arg('pipeline')?.toLowerCase();
+const matches = pipelines
+  .filter((p) => !pipelineFilter || p.name.trim().toLowerCase() === pipelineFilter)
+  .flatMap((p) => (p.stages ?? [])
+    .filter((s) => s.name.trim().toLowerCase() === stageName.toLowerCase())
+    .map((s) => ({ pipeline: p, stage: s })));
 if (matches.length === 0) {
-  console.error(`\nNo stage named "${stageName}". Pass --stage="<exact name>" from the list above.`);
+  console.error(`\nNo stage named "${stageName}"${pipelineFilter ? ` in pipeline "${arg('pipeline')}"` : ''}. Use names from the list above.`);
   process.exit(1);
 }
-if (matches.length > 1) console.log(`\nNote: "${stageName}" exists in ${matches.length} pipelines; showing all.`);
+
+// Counts first, so the overview survives even if the details get long.
+console.log(`\nOpportunities in stage "${stageName}":`);
+const pages = [];
+for (const m of matches) {
+  const page = await ghl.searchOpportunities({ pipelineId: m.pipeline.id, stageId: m.stage.id, limit: Math.min(sampleSize, 100) });
+  pages.push({ ...m, ...page });
+}
+console.table(pages.map((p) => ({ Pipeline: p.pipeline.name, Stage: p.stage.name, Opportunities: p.meta.total ?? p.opportunities.length })));
+if (process.argv.includes('--counts')) process.exit(0);
 
 const customFieldNames = Object.fromEntries((await ghl.customFields()).map((f) => [f.id, `${f.name} {${f.fieldKey ?? f.id}}`]));
 
-for (const { pipeline, stage } of matches) {
-  const { opportunities, meta } = await ghl.searchOpportunities({ pipelineId: pipeline.id, stageId: stage.id, limit: Math.min(sampleSize, 100) });
+for (const { pipeline, stage, opportunities, meta } of pages) {
+  if (opportunities.length === 0) continue;
   console.log(`\nStage "${stage.name}" in "${pipeline.name}": ${meta.total ?? opportunities.length} opportunities. Sample of ${opportunities.length}:`);
 
   const records = [];
