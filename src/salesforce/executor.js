@@ -27,6 +27,9 @@ export async function executePlan(plan, sf, opts, store) {
       case 'upsertOrder':
         results.push(await upsertOrder(op, accountId, sf, opts, store));
         break;
+      case 'createLead':
+        results.push(await createLead(op, sf, store));
+        break;
       default:
         throw new Error(`Unknown operation ${op.op}`);
     }
@@ -196,6 +199,26 @@ async function syncLines(op, saved, sf, opts, store) {
   }
 
   return { created: toCreate.length, updated: toUpdate.length, deleted: toDelete.length };
+}
+
+// A GHL lead becomes one Salesforce Lead, once per GHL contact and
+// sub-account. Lead has no external ID, so the link table remembers it; a
+// contact that enters the stage again is not re-created. Salesforce assigns
+// the owner on insert.
+async function createLead(op, sf, store) {
+  if (!store) throw new Error('Lead sync needs the database');
+  const link = await store.getLeadLink(op.account, op.ghlContactId);
+  if (link) {
+    return { op: 'createLead', action: 'exists', id: link.salesforce_id, ghlContactId: op.ghlContactId };
+  }
+  const res = await sf.request('POST', '/sobjects/Lead', op.fields);
+  await store.saveLeadLink({
+    account: op.account,
+    ghlContactId: op.ghlContactId,
+    ghlOpportunityId: op.ghlOpportunityId,
+    salesforceId: res.data.id,
+  });
+  return { op: 'createLead', action: 'created', id: res.data.id, ghlContactId: op.ghlContactId };
 }
 
 // Orders sent while the customer had no Provider ID are linked to the

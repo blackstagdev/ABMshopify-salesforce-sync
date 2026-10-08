@@ -36,13 +36,18 @@ export function createGhlClient({ token, locationId }, fetchImpl = fetch) {
     async contact(id) {
       return (await get(`/contacts/${id}`)).contact ?? null;
     },
+    async opportunity(id) {
+      return (await get(`/opportunities/${id}`)).opportunity ?? null;
+    },
     // One page of opportunities in a pipeline stage. Pass the returned
     // meta.startAfter / meta.startAfterId to get the next page.
-    async searchOpportunities({ pipelineId, stageId, limit = 100, startAfter, startAfterId }) {
+    async searchOpportunities({ pipelineId, stageId, contactId, status, limit = 100, startAfter, startAfterId }) {
       const data = await get('/opportunities/search', {
         location_id: locationId,
         pipeline_id: pipelineId,
         pipeline_stage_id: stageId,
+        contact_id: contactId,
+        status,
         limit,
         startAfter,
         startAfterId,

@@ -8,6 +8,7 @@
 // Fulfilment_Status__c (DO NOT SEND) or anything AlphaSync: this store is
 // the Alpha BioMed line only.
 import { resolveProviderId } from './providerId.js';
+import { clean, text, compact, money, checkEmail } from './fields.js';
 
 const CUSTOMER_TOPICS = new Set(['customers/create', 'customers/update']);
 const ORDER_TOPICS = new Set(['orders/create', 'orders/updated', 'orders/paid', 'orders/cancelled']);
@@ -87,7 +88,7 @@ function planForCustomer({ customer, address, email, phone }, opts, context, { i
   const firstName = clean(customer?.first_name || address?.first_name);
   const lastName = clean(customer?.last_name || address?.last_name);
   const fullName = [firstName, lastName].filter(Boolean).join(' ');
-  const validEmail = checkEmail(email, plan);
+  const validEmail = checkEmail(email, plan.warnings);
 
   const accountName = clean(address?.company) || fullName || validEmail;
   if (!accountName) plan.blockers.push('No company, name or email to use as the Account Name');
@@ -225,36 +226,4 @@ function mailingAddress(a) {
 
 function street(a) {
   return text([clean(a?.address1), clean(a?.address2)].filter(Boolean).join('\n'), 255);
-}
-
-// Salesforce Email fields hold 80 characters; truncating would corrupt it.
-function checkEmail(email, plan) {
-  const value = clean(email)?.toLowerCase();
-  if (!value) return undefined;
-  if (value.length > 80 || !value.includes('@')) {
-    plan.warnings.push(`Email "${value}" is not usable in Salesforce and was skipped`);
-    return undefined;
-  }
-  return value;
-}
-
-function money(value) {
-  const n = Number(value);
-  return value === null || value === undefined || value === '' || !Number.isFinite(n) ? undefined : Math.round(n * 100) / 100;
-}
-
-function clean(value) {
-  if (value === null || value === undefined) return undefined;
-  const s = String(value).trim();
-  return s === '' ? undefined : s;
-}
-
-function text(value, max) {
-  const s = clean(value);
-  return s && s.length > max ? s.slice(0, max) : s;
-}
-
-// Drop empty values so a blank in Shopify never wipes data in Salesforce.
-function compact(obj) {
-  return Object.fromEntries(Object.entries(obj).filter(([, v]) => v !== undefined && v !== null && v !== ''));
 }

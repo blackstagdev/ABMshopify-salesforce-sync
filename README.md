@@ -45,6 +45,26 @@ The service never sends:
 - `AlphaSync_Status__c`, `ABM_Owner__c`, `Sync_Owner__c`, `OwnerId`, or any AlphaSync data
 - `Fulfilment_Status__c` (DO NOT SEND), `Order_For__c`, `Product_Category__c` (no source in Shopify yet)
 
+## GHL leads → Salesforce Lead
+
+Open opportunities in a GoHighLevel lead stage become Salesforce **Leads**. This runs when `LEAD_SYNC_ENABLED=true`, and follows `SALESFORCE_MODE` like everything else.
+
+| Sub-account | Pipeline / stage | Line of Business |
+|---|---|---|
+| Alpha BioMed | 1. Providers (RK) / New Providers | Alpha BioMed |
+| Alpha Sync | Alpha Sync / New Leads | AlphaSync |
+
+- **Webhook:** a GHL Workflow (trigger: opportunity enters the stage; action: Webhook) POSTs to `/webhooks/ghl/abm?secret=<GHL_WEBHOOK_SECRET>` (or `/sync`). Add custom data `contact_id` = `{{contact.id}}` and `opportunity_id` = `{{opportunity.id}}`. The app re-reads both records from GHL, and only sends opportunities that are still **open** in that stage.
+- **Existing leads:** `npm run ghl-backfill -- --account=abm` (or `sync`).
+- **Fields:**
+  - Name, email, phone, address, website, title and suffix
+  - Company = company name, or else the "Clinic Name" custom field
+  - `Line_of_Business__c` as in the table above
+  - `Entered_Salesforce__c` = when the opportunity was created in GHL
+  - Contacts tagged exactly `bsd-lead` get `LeadSource = Black Stag`, so they're round-robined
+- **Owner:** Salesforce assigns it by State, and the app never sends one.
+- **No duplicates:** one Lead per GHL contact per sub-account. It's created once, then left to the sales team.
+
 ## Event statuses
 
 | Status | Meaning |
@@ -81,6 +101,9 @@ npm run backfill -- --orders --since=2026-01-01 --limit=100
 npm run requeue -- --ids=12,13             # replay specific events
 npm run requeue -- --status=synced --latest  # re-send the newest event per customer/order (e.g. to fill in a new field)
 npm run check-provider-ids                 # who has a Provider ID, issues, and latest sync status
+npm run report-duplicates                  # explain DUPLICATES_DETECTED failures
+npm run ghl-explore -- --account=abm       # GHL pipelines, stage counts, field inventory (read-only)
+npm run ghl-backfill -- --account=abm      # queue the open opportunities already in the lead stage
 npm run sf-describe                        # print Provider_Order__c and other order objects' fields
 npm run sf-describe -- Account --json      # any object, as JSON
 npm run sf-describe -- --list              # every custom object in the org

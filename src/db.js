@@ -47,7 +47,35 @@ export function createDb({ databaseUrl, databaseSsl }) {
       );
       CREATE INDEX IF NOT EXISTS salesforce_orders_unlinked_idx
         ON salesforce_orders (shopify_customer_id) WHERE account_id IS NULL;
+
+      -- One Salesforce Lead per GHL contact per sub-account (Lead has no
+      -- external ID either).
+      CREATE TABLE IF NOT EXISTS salesforce_leads (
+        account            TEXT NOT NULL,
+        ghl_contact_id     TEXT NOT NULL,
+        ghl_opportunity_id TEXT,
+        salesforce_id      TEXT NOT NULL,
+        created_at         TIMESTAMPTZ NOT NULL DEFAULT now(),
+        PRIMARY KEY (account, ghl_contact_id)
+      );
     `);
+  }
+
+  async function getLeadLink(account, ghlContactId) {
+    const { rows } = await pool.query(
+      'SELECT * FROM salesforce_leads WHERE account = $1 AND ghl_contact_id = $2',
+      [account, ghlContactId],
+    );
+    return rows[0] ?? null;
+  }
+
+  async function saveLeadLink({ account, ghlContactId, ghlOpportunityId, salesforceId }) {
+    await pool.query(
+      `INSERT INTO salesforce_leads (account, ghl_contact_id, ghl_opportunity_id, salesforce_id)
+       VALUES ($1, $2, $3, $4)
+       ON CONFLICT (account, ghl_contact_id) DO NOTHING`,
+      [account, ghlContactId, ghlOpportunityId, salesforceId],
+    );
   }
 
   async function getOrderLink(shopifyOrderId) {
@@ -198,6 +226,7 @@ export function createDb({ databaseUrl, databaseSsl }) {
 
   return {
     pool, migrate, insertEvent, claimEvents, finishEvent, retryEvent, listEvents, getEvent, countByStatus,
-    requeue, requeueLatest, latestCustomerEvents, getOrderLink, saveOrderLink, unlinkedOrdersForCustomer, ping,
+    requeue, requeueLatest, latestCustomerEvents, getOrderLink, saveOrderLink, unlinkedOrdersForCustomer,
+    getLeadLink, saveLeadLink, ping,
   };
 }

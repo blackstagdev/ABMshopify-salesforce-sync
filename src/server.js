@@ -54,6 +54,44 @@ export function createApp({ db, config, log = console }) {
     }
   });
 
+  // GHL Workflow "Webhook" action for opportunities entering a lead stage.
+  // GHL doesn't sign these, so the URL carries a shared secret
+  // (?secret=GHL_WEBHOOK_SECRET). Only ids are needed: the worker reads the
+  // current opportunity and contact from GHL.
+  app.post('/webhooks/ghl/:account', express.json({ limit: '1mb' }), async (req, res) => {
+    const secret = config.ghl?.webhookSecret;
+    if (!secret) return res.status(404).end();
+    const given = Buffer.from(String(req.query.secret ?? req.get('X-Sync-Secret') ?? ''));
+    const expected = Buffer.from(secret);
+    if (given.length !== expected.length || !crypto.timingSafeEqual(given, expected)) {
+      return res.status(401).send('Invalid secret');
+    }
+
+    const account = req.params.account;
+    if (!config.ghl.accounts?.[account]) return res.status(404).send('Unknown account');
+
+    const body = req.body ?? {};
+    const custom = body.customData ?? {};
+    const contactId = custom.contact_id ?? body.contact_id ?? body.contactId ?? body.contact?.id;
+    const opportunityId = custom.opportunity_id ?? body.opportunity_id ?? body.opportunityId ?? body.opportunity?.id;
+    if (!contactId && !opportunityId) return res.status(400).send('No contact_id or opportunity_id');
+
+    try {
+      await db.insertEvent({
+        webhookId: `ghl:${account}:${opportunityId ?? contactId}:${crypto.randomUUID()}`,
+        topic: 'ghl/opportunity',
+        shopDomain: null,
+        // "id" groups events per contact for requeue --latest.
+        payload: { id: `${account}:${contactId ?? opportunityId}`, account, contactId, opportunityId },
+      });
+      log.info(`[webhook] ghl/${account} ${opportunityId ?? contactId}`);
+      res.status(200).send('OK');
+    } catch (err) {
+      log.error('[webhook] could not store GHL event:', err.message);
+      res.status(500).send('Could not store event');
+    }
+  });
+
   app.use('/admin', express.json(), requireAdmin(config.adminToken), adminRoutes(db));
 
   return app;

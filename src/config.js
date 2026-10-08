@@ -61,6 +61,34 @@ export const config = {
     orderSyncEnabled: bool(env.ORDER_SYNC_ENABLED),
   },
 
+  // GoHighLevel leads -> Salesforce Lead. Pipeline/stage ids come from
+  // `npm run ghl-explore`; override with env if the pipelines change.
+  ghl: {
+    // Shared secret on the GHL Workflow webhook URL (?secret=...).
+    webhookSecret: env.GHL_WEBHOOK_SECRET,
+    leadSyncEnabled: bool(env.LEAD_SYNC_ENABLED),
+    // Contacts with exactly this tag get LeadSource "Black Stag".
+    adLeadTag: env.GHL_AD_LEAD_TAG || 'bsd-lead',
+    accounts: {
+      abm: {
+        token: env.GHL_ABM_TOKEN,
+        locationId: env.GHL_ABM_LOCATION_ID,
+        // "1. Providers (RK)" / "New Providers"
+        pipelineId: env.GHL_ABM_PIPELINE_ID || 'xzG1wOpYZyN99Vx90r8y',
+        stageId: env.GHL_ABM_STAGE_ID || '249396ff-9b90-4680-8d1c-54d6fffd4c50',
+        lineOfBusiness: 'Alpha BioMed',
+      },
+      sync: {
+        token: env.GHL_SYNC_TOKEN,
+        locationId: env.GHL_SYNC_LOCATION_ID,
+        // "Alpha Sync" / "New Leads"
+        pipelineId: env.GHL_SYNC_PIPELINE_ID || 'PIcnQ1WBD42DuTbQDfgx',
+        stageId: env.GHL_SYNC_STAGE_ID || 'c0647486-8964-46e9-8df0-a194c911b98b',
+        lineOfBusiness: 'AlphaSync',
+      },
+    },
+  },
+
   worker: {
     enabled: bool(env.WORKER_ENABLED, true),
     intervalMs: int(env.WORKER_INTERVAL_MS, 5000),
