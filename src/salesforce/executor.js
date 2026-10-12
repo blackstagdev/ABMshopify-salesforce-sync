@@ -42,18 +42,24 @@ export async function executePlan(plan, sf, opts, store) {
 // create only, so an Affiliate account is never switched to Customer.
 async function upsertAccount(op, sf, opts, store) {
   const byProviderId = `/sobjects/Account/Provider_ID__c/${encodeURIComponent(op.providerId)}`;
-  const existing = await getOrNull(sf, `${byProviderId}?fields=Id,ABM_Owner__c,ABM_Status__c`);
+  const existing = await getOrNull(sf, `${byProviderId}?fields=Id,Name,ABM_Owner__c,ABM_Status__c`);
   let result;
 
   if (existing) {
     const status = statusChange(existing, op);
-    const patch = { ...op.updateFields, ...(status.value && { ABM_Status__c: status.value }) };
+    const rename = renameTo(existing, op);
+    const patch = {
+      ...op.updateFields,
+      ...(status.value && { ABM_Status__c: status.value }),
+      ...(rename && { Name: rename }),
+    };
     if (Object.keys(patch).length > 0) {
       await sf.request('PATCH', `/sobjects/Account/${existing.Id}`, patch);
     }
     result = {
       op: 'upsertAccount', action: 'updated', id: existing.Id, providerId: op.providerId,
       ...(status.value && { abmStatus: status.value }),
+      ...(rename && { renamedFrom: existing.Name, renamedTo: rename }),
       ...(status.warning && { warning: status.warning }),
     };
   } else {
@@ -69,6 +75,16 @@ async function upsertAccount(op, sf, opts, store) {
   const linked = await linkUnlinkedOrders(op.shopifyCustomerId, result.id, sf, opts, store);
   if (linked) result.linkedOrders = linked;
   return result;
+}
+
+// The Account is renamed only when it still carries the fallback name this
+// sync gave it (the person's name or email) and Shopify now has a company.
+// Any other name was chosen in Salesforce and is kept.
+function renameTo(existing, op) {
+  if (!op.companyName || !existing.Name) return null;
+  const current = existing.Name.trim().toLowerCase();
+  if (current === op.companyName.toLowerCase()) return null;
+  return (op.fallbackNames ?? []).some((n) => n.toLowerCase() === current) ? op.companyName : null;
 }
 
 function statusChange(existing, op) {

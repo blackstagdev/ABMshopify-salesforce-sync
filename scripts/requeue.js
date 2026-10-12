@@ -4,6 +4,8 @@
 //   npm run requeue -- --ids=12,13
 //   npm run requeue -- --status=synced --latest    re-send only the newest event
 //                                                  per customer / per order
+//   npm run requeue -- --status=synced --latest --topic=orders     orders only
+//   npm run requeue -- --status=synced --latest --topic=customers  customers only
 //
 // --latest never replays older data over newer data. Use it to re-send
 // records already synced, e.g. to fill in a newly mapped field.
@@ -14,6 +16,12 @@ const arg = (name) => process.argv.find((a) => a.startsWith(`--${name}=`))?.spli
 const status = arg('status');
 const ids = arg('ids')?.split(',').map(Number).filter(Number.isFinite);
 const latest = process.argv.includes('--latest');
+const topic = arg('topic');
+
+if (topic && !['customers', 'orders', 'ghl'].includes(topic)) {
+  console.error('--topic must be customers, orders or ghl');
+  process.exit(1);
+}
 
 if (latest && !status) {
   console.error('--latest needs --status=<status>');
@@ -25,6 +33,6 @@ if (!status && !ids?.length) {
 }
 
 const db = createDb(config);
-const count = latest ? await db.requeueLatest(status) : await db.requeue({ status, ids });
+const count = latest ? await db.requeueLatest(status, topic ?? null) : await db.requeue({ status, ids });
 console.log(`Requeued ${count} event(s).`);
 await db.pool.end();

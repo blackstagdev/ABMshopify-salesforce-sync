@@ -22,13 +22,13 @@ test('GHL contact maps to the Lead fields from the workbook', () => {
     FirstName: 'Ann', LastName: 'Romero', Company: 'Acu Wellness', Email: 'ann@clinic.com', Phone: '+17145550100',
     Street: '473 Main St', City: 'San Diego', State: 'California', PostalCode: '92101', Country: 'US',
     Website: 'https://acu.example', Title: 'Owner', Suffix: 'MD',
-    Line_of_Business__c: 'Alpha BioMed', LeadSource: 'Black Stag', Entered_Salesforce__c: '2026-10-01T15:00:00.000Z',
+    Line_of_Business__c: 'Alpha BioMed', LeadSource: 'Black Stag',
   });
 });
 
-test('never sends owner, self-sourced or NPI', () => {
+test('never sends owner, self-sourced, NPI or Entered Salesforce', () => {
   const { fields } = mapLead(opp, contact, fieldKeys, cfg);
-  for (const f of ['OwnerId', 'Self_Sourced__c', 'NPI__c']) assert.equal(f in fields, false, f);
+  for (const f of ['OwnerId', 'Self_Sourced__c', 'NPI__c', 'Entered_Salesforce__c']) assert.equal(f in fields, false, f);
 });
 
 test('only the exact ad tag makes a Black Stag lead', () => {

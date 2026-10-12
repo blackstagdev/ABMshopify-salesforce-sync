@@ -32,6 +32,7 @@ Node.js (ESM, Node 22+) service that pushes Shopify customers and orders from al
 The current workbook is "Alpha BioMed - Salesforce Field Reference (Lead, Account, Contact).xlsx" (it also has Provider Order and Order Product tabs). All `*.xlsx` files are gitignored. The Shopify sync is Alpha BioMed only: never write AlphaSync fields from Shopify data. The GHL lead sync covers both lines (Lead.Line_of_Business__c). These rules must hold:
 
 - Accounts are created and updated only through `Provider_ID__c` (Text 30, unique external ID). Never match on NPI__c, Primary_Email__c or name.
+- Account Name = the company on the default/billing address, else on any of the customer's addresses, else the person's name or email. It's set on create. On update, it's renamed only when it still equals that fallback (person or email) and a company now exists. Names edited in Salesforce are never touched.
 - Never invent a Provider ID rule. The strategy is configuration, and the default `none` blocks events. The chosen source is the Shopify customer metafield "Provider ID" (`PROVIDER_ID_STRATEGY=customer_metafield`, `PROVIDER_ID_METAFIELD=namespace.key`). The processor looks it up through the Shopify Admin API, because webhooks don't carry metafields.
 - `Shopify_ID__c` on Account was added by the project owner for this integration; it isn't in the workbook. It holds the Shopify customer id for reference only and is never used for matching.
 - Never write Salesforce-maintained fields (order counts, revenue, order dates, trends) or formula fields.
@@ -42,7 +43,7 @@ The current workbook is "Alpha BioMed - Salesforce Field Reference (Lead, Accoun
 - Truncate text to the field lengths in the workbook. Omit blank values rather than sending empties.
 - **Provider Order / Order Product:**
   - Neither object has an external ID. The `salesforce_orders` table maps each Shopify order (and line) to its Salesforce Id. The link is saved straight after the create, so retries never duplicate.
-  - Required order fields: Line_of_Business__c = Alpha BioMed, Order_Amount__c = Shopify current total (0 once cancelled), Order_Date__c = local date from created_at.
+  - Required order fields: Line_of_Business__c = Alpha BioMed, Order_Amount__c = Shopify `current_subtotal_price` (subtotal after discounts, no shipping or tax; the Salesforce team asked for this in Oct 2026; 0 once cancelled), Order_Date__c = local date from created_at.
   - Order_Type__c: New for the customer's first order, Reorder for later ones.
   - Paid__c: true when paid, partially refunded or refunded.
   - Never send Fulfilment_Status__c (DO NOT SEND), Order_For__c or OwnerId. Product_Category__c is blank because there's no source.
@@ -52,6 +53,7 @@ The current workbook is "Alpha BioMed - Salesforce Field Reference (Lead, Accoun
   - Source: open opportunities in one stage per sub-account. Alpha BioMed: "1. Providers (RK)" / "New Providers" → Line of Business Alpha BioMed. Alpha Sync: "Alpha Sync" / "New Leads" → AlphaSync. The ids are in config.js and can be overridden by env.
   - A GHL Workflow webhook (`/webhooks/ghl/:account?secret=GHL_WEBHOOK_SECRET`) sends ids only. The worker re-reads the opportunity and contact from GHL. `npm run ghl-backfill` queues what's already in the stage.
   - Company = companyName, or else the "Clinic Name" custom field (contact.clinic_name). The exact tag `bsd-lead` → LeadSource "Black Stag".
+  - Never send Entered_Salesforce__c: the Salesforce team asked for it to stay blank, because it starts their follow-up alerts.
   - Never send OwnerId (Salesforce routes by State) or Self_Sourced__c, nor NPI, EIN or reseller data.
   - One Lead per GHL contact per sub-account (`salesforce_leads` table). It's created once, never updated.
   - Gated by `LEAD_SYNC_ENABLED`.

@@ -15,7 +15,7 @@ Shopify ──webhook──▶ POST /webhooks/shopify ──▶ Postgres (shopif
 
 A customer becomes:
 
-- an **Account** upserted on `Provider_ID__c` with Name (set on create only), `Shopify_ID__c` (the Shopify customer id), phone, `Primary_Email__c` and billing address, and
+- an **Account** upserted on `Provider_ID__c` with Name (the company from any of the customer's addresses, else the person; a person-named Account is renamed once a company appears), `Shopify_ID__c` (the Shopify customer id), phone, `Primary_Email__c` and billing address, and
 - a **Contact** on that Account, matched on Account + Email.
 
 **Alpha BioMed Status** (`ABM_Status__c`) is **Prospect** for a customer with no Shopify orders and **Active** once they have one. It's set when the Account is created. Later it's updated only if no Alpha BioMed Owner is assigned, and only forward: it never goes back from Active, and a rep's Lapsed is kept until a new order arrives.
@@ -25,7 +25,7 @@ An **order** (when `ORDER_SYNC_ENABLED=true`) syncs its customer the same way, t
 | Provider Order field | From Shopify |
 |---|---|
 | `Line_of_Business__c` | `Alpha BioMed` |
-| `Order_Amount__c` | current total (tax and shipping included, after edits and refunds); `0` once cancelled |
+| `Order_Amount__c` | current subtotal after discounts (no shipping or tax, after edits and refunds); `0` once cancelled |
 | `Order_Date__c` | order date (store time zone) |
 | `Order_Type__c` | `New` for the customer's first order, `Reorder` after |
 | `Paid__c` | paid, partially refunded or refunded |
@@ -60,7 +60,7 @@ Open opportunities in a GoHighLevel lead stage become Salesforce **Leads**. This
   - Name, email, phone, address, website, title and suffix
   - Company = company name, or else the "Clinic Name" custom field
   - `Line_of_Business__c` as in the table above
-  - `Entered_Salesforce__c` = when the opportunity was created in GHL
+  - `Entered_Salesforce__c` is left blank, as the Salesforce team asked
   - Contacts tagged exactly `bsd-lead` get `LeadSource = Black Stag`, so they're round-robined
 - **Owner:** Salesforce assigns it by State, and the app never sends one.
 - **No duplicates:** one Lead per GHL contact per sub-account. It's created once, then left to the sales team.
@@ -100,6 +100,8 @@ npm run backfill -- --customers            # queue existing customers
 npm run backfill -- --orders --since=2026-01-01 --limit=100
 npm run requeue -- --ids=12,13             # replay specific events
 npm run requeue -- --status=synced --latest  # re-send the newest event per customer/order (e.g. to fill in a new field)
+npm run requeue -- --status=synced --latest --topic=orders     # ...orders only (or customers / ghl)
+npm run -s data-check                      # read-only data answers (amounts, samples, names, test accounts)
 npm run check-provider-ids                 # who has a Provider ID, issues, and latest sync status
 npm run report-duplicates                  # explain DUPLICATES_DETECTED failures
 npm run ghl-explore -- --account=abm       # GHL pipelines, stage counts, field inventory (read-only)

@@ -91,6 +91,9 @@ const order = {
   created_at: '2026-09-20T22:30:00-07:00',
   total_price: '260.00',
   current_total_price: '240.00',
+  subtotal_price: '245.00',
+  current_subtotal_price: '225.00',
+  total_shipping_price_set: { shop_money: { amount: '15.00' } },
   financial_status: 'paid',
   fulfillment_status: 'fulfilled',
   customer,
@@ -117,7 +120,7 @@ test('order with a Provider ID: Account (Active) + Contact + Provider Order with
   assert.equal(op.shopifyOrderId, '5001');
   assert.deepEqual(op.fields, {
     Line_of_Business__c: 'Alpha BioMed',
-    Order_Amount__c: 240,
+    Order_Amount__c: 225,
     Order_Date__c: '2026-09-20',
     Order_Type__c: 'New',
     Paid__c: true,
@@ -141,7 +144,7 @@ test('orders never carry Fulfilment Status, owner or AlphaSync fields', () => {
 test('order sync switched off: customer still synced, order only previewed', () => {
   const plan = buildPlan('orders/create', order, baseOpts, { isFirstOrder: true });
   assert.deepEqual(plan.ops.map((o) => o.op), ['upsertAccount', 'upsertContact']);
-  assert.equal(plan.orderPreview.fields.Order_Amount__c, 240);
+  assert.equal(plan.orderPreview.fields.Order_Amount__c, 225, 'subtotal after discounts, not the total with shipping');
 });
 
 test('order without a Provider ID, or a guest checkout, is sent unlinked', () => {

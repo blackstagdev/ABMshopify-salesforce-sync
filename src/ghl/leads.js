@@ -2,7 +2,8 @@
 // reference). Pure: no I/O.
 //
 // Never sent: OwnerId (Salesforce assigns leads by state, or round-robins
-// Black Stag ad leads), Self_Sourced__c, NPI/EIN and reseller details.
+// Black Stag ad leads), Self_Sourced__c, Entered_Salesforce__c, NPI/EIN and
+// reseller details.
 import { clean, text, compact, checkEmail } from '../mapping/fields.js';
 
 // cfg: { lineOfBusiness, adLeadTag }
@@ -49,8 +50,9 @@ export function mapLead(opportunity, contact, fieldKeyById, cfg) {
     Line_of_Business__c: cfg.lineOfBusiness,
     // "Black Stag" leads are round-robined across the line's reps.
     LeadSource: isAdLead ? 'Black Stag' : undefined,
-    // "Send the original creation time from the source system if you have it."
-    Entered_Salesforce__c: isoDate(opportunity?.createdAt ?? contact?.dateAdded),
+    // Entered_Salesforce__c is left blank on purpose: the Salesforce team
+    // asked for it (Oct 2026), since Salesforce stamps it and it starts their
+    // follow-up alerts.
   });
 
   if (!fields.State) warnings.push('No state: Salesforce sends leads without a matching territory to the fallback owner');
@@ -72,9 +74,4 @@ function customValues(contact, fieldKeyById) {
     if (key) out[key] = cf.value ?? cf.fieldValue;
   }
   return out;
-}
-
-function isoDate(value) {
-  const d = value ? new Date(value) : null;
-  return d && !Number.isNaN(d.getTime()) ? d.toISOString() : undefined;
 }

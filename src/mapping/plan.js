@@ -90,7 +90,12 @@ function planForCustomer({ customer, address, email, phone }, opts, context, { i
   const fullName = [firstName, lastName].filter(Boolean).join(' ');
   const validEmail = checkEmail(email, plan.warnings);
 
-  const accountName = clean(address?.company) || fullName || validEmail;
+  // The practice name: the company on this address, else on any of the
+  // customer's other addresses. Only when there is none does the Account
+  // get the person's name or email.
+  const company = clean(address?.company)
+    || (customer?.addresses ?? []).map((a) => clean(a?.company)).find(Boolean);
+  const accountName = company || fullName || validEmail;
   if (!accountName) plan.blockers.push('No company, name or email to use as the Account Name');
 
   // Only fields that are safe to refresh from Shopify on every update.
@@ -113,10 +118,13 @@ function planForCustomer({ customer, address, email, phone }, opts, context, { i
   plan.ops.push({
     op: 'upsertAccount',
     providerId: providerId.value,
-    // Name is only set when the Account is created, so a name the sales
-    // team has tidied up in Salesforce is not overwritten by Shopify.
+    // Name is set when the Account is created. Afterwards it only changes
+    // from a fallback (the person's name or email) to the company once
+    // Shopify has one; a name the sales team has edited is left alone.
     createFields: compact({ Name: text(accountName, 255), ...accountUpdate, ABM_Status__c: abmStatus }),
     updateFields: accountUpdate,
+    companyName: text(company, 255),
+    fallbackNames: [fullName, validEmail].map((n) => text(n, 255)).filter(Boolean),
     abmStatus,
     fromNewOrder,
     shopifyCustomerId: customer?.id != null ? String(customer.id) : null,
@@ -159,10 +167,12 @@ export function mapProviderOrder(order, opts, context = {}) {
   const blockers = [];
   const cancelled = Boolean(order.cancelled_at);
 
-  // The order total, not calculated from the lines. Shopify's current total
-  // already reflects edits and refunds. A cancelled order counts for nothing.
-  const amount = cancelled ? 0 : money(order.current_total_price ?? order.total_price);
-  if (amount === undefined) blockers.push('Order has no total');
+  // Requested by the Salesforce team (Oct 2026): the subtotal after
+  // discounts, without shipping or tax, so it matches the sum of the lines.
+  // Shopify's "current" subtotal already reflects edits and refunds. A
+  // cancelled order counts for nothing.
+  const amount = cancelled ? 0 : money(order.current_subtotal_price ?? order.subtotal_price);
+  if (amount === undefined) blockers.push('Order has no subtotal');
 
   // The date the practice placed the order, as YYYY-MM-DD. Shopify sends
   // created_at in the store's time zone, so its date part is the local date.
