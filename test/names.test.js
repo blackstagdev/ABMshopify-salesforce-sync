@@ -76,3 +76,36 @@ test('new Accounts are unaffected: GET 404 creates with the company name', async
   await run(sf, accountOp(base));
   assert.equal(calls.find((c) => c.method === 'PATCH').body.Name, 'Sunrise Clinic');
 });
+
+test('a rename blocked by the duplicate rule keeps the old name but saves everything else', async () => {
+  const calls = [];
+  const sf = {
+    async request(method, path, body) {
+      calls.push({ method, path, body });
+      if (method === 'GET') return { status: 200, data: { Id: '001X', Name: 'Dana Lee' } };
+      if (method === 'PATCH' && body.Name) {
+        throw new SalesforceError(`PATCH ${path} -> 400 DUPLICATES_DETECTED: This practice may already be in Salesforce`, 400);
+      }
+      return { status: 204, data: null };
+    },
+    async query() { return []; },
+  };
+  const [result] = await run(sf, accountOp(base));
+  const patches = calls.filter((c) => c.method === 'PATCH');
+  assert.equal(patches.length, 2);
+  assert.equal('Name' in patches[1].body, false);
+  assert.equal(patches[1].body.Primary_Email__c, 'dana@sunrise.com');
+  assert.equal(result.renameBlocked, 'Sunrise Clinic');
+  assert.match(result.warning, /probably already exists/);
+});
+
+test('other update errors still fail the event', async () => {
+  const sf = {
+    async request(method) {
+      if (method === 'GET') return { status: 200, data: { Id: '001X', Name: 'Dana Lee' } };
+      throw new SalesforceError('PATCH -> 400 FIELD_INTEGRITY_EXCEPTION', 400);
+    },
+    async query() { return []; },
+  };
+  await assert.rejects(run(sf, accountOp(base)), /FIELD_INTEGRITY_EXCEPTION/);
+});

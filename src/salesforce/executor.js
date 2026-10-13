@@ -47,20 +47,33 @@ async function upsertAccount(op, sf, opts, store) {
 
   if (existing) {
     const status = statusChange(existing, op);
-    const rename = renameTo(existing, op);
-    const patch = {
-      ...op.updateFields,
-      ...(status.value && { ABM_Status__c: status.value }),
-      ...(rename && { Name: rename }),
-    };
-    if (Object.keys(patch).length > 0) {
-      await sf.request('PATCH', `/sobjects/Account/${existing.Id}`, patch);
+    let rename = renameTo(existing, op);
+    let renameBlocked = null;
+    const base = { ...op.updateFields, ...(status.value && { ABM_Status__c: status.value }) };
+    const path = `/sobjects/Account/${existing.Id}`;
+    try {
+      const patch = { ...base, ...(rename && { Name: rename }) };
+      if (Object.keys(patch).length > 0) await sf.request('PATCH', path, patch);
+    } catch (err) {
+      // The new name matches another Account, so the duplicate rule blocks
+      // the update. Keep the old name (never bypass the rule), still save
+      // everything else so the practice's orders aren't held up, and flag it:
+      // the practice most likely exists twice in Salesforce.
+      if (!rename || !isDuplicateError(err)) throw err;
+      renameBlocked = rename;
+      rename = null;
+      if (Object.keys(base).length > 0) await sf.request('PATCH', path, base);
     }
+    const warnings = [
+      status.warning,
+      renameBlocked && `Rename to "${renameBlocked}" blocked by the duplicate rule: this practice probably already exists in Salesforce under another Account`,
+    ].filter(Boolean);
     result = {
       op: 'upsertAccount', action: 'updated', id: existing.Id, providerId: op.providerId,
       ...(status.value && { abmStatus: status.value }),
       ...(rename && { renamedFrom: existing.Name, renamedTo: rename }),
-      ...(status.warning && { warning: status.warning }),
+      ...(renameBlocked && { renameBlocked }),
+      ...(warnings.length && { warning: warnings.join('; ') }),
     };
   } else {
     const RecordTypeId = await accountRecordTypeId(sf, opts.accountRecordType);
@@ -75,6 +88,10 @@ async function upsertAccount(op, sf, opts, store) {
   const linked = await linkUnlinkedOrders(op.shopifyCustomerId, result.id, sf, opts, store);
   if (linked) result.linkedOrders = linked;
   return result;
+}
+
+function isDuplicateError(err) {
+  return err?.status === 400 && /DUPLICATES_DETECTED/.test(err.message ?? '');
 }
 
 // The Account is renamed only when it still carries the fallback name this
