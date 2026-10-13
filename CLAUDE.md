@@ -42,7 +42,11 @@ The current workbook is "Alpha BioMed - Salesforce Field Reference (Lead, Accoun
 - Resolve record types by DeveloperName at runtime (`Customer`, `Affiliate`), never by hard-coded Id. Send address components, not compound address fields.
 - Truncate text to the field lengths in the workbook. Omit blank values rather than sending empties.
 - **Provider Order / Order Product:**
-  - Neither object has an external ID. The `salesforce_orders` table maps each Shopify order (and line) to its Salesforce Id. The link is saved straight after the create, so retries never duplicate.
+  - The `salesforce_orders` table maps each Shopify order (and line) to its Salesforce Id. The link is saved straight after the create, so retries never duplicate.
+  - Since Oct 2026 the Salesforce team has added these fields:
+    - Order: Shopify_Order_ID__c (unique), Shopify_Order_Number__c, Shopify_Customer_ID__c, Shipping_Amount__c, Tax_Amount__c
+    - Line: Shopify_Line_Item_ID__c (unique), SKU__c, Shopify_Product_ID__c, Shopify_Variant_ID__c, Sample_Item__c (SKU ends in `-SAMPLE`)
+    - They're sent on every create and update. With `ORDER_UPSERT_BY_SHOPIFY_ID=true`, new orders are upserted on Shopify_Order_ID__c. Only switch it on after every existing order and line has its ID filled in, or every order would be duplicated.
   - Required order fields: Line_of_Business__c = Alpha BioMed, Order_Amount__c = Shopify `current_subtotal_price` (subtotal after discounts, no shipping or tax; the Salesforce team asked for this in Oct 2026; 0 once cancelled), Order_Date__c = local date from created_at.
   - Order_Type__c: New for the customer's first order, Reorder for later ones.
   - Paid__c: true when paid, partially refunded or refunded.

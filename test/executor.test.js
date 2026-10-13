@@ -282,3 +282,55 @@ test('failed line creation is not retried blindly, and the next attempt only add
   assert.equal(sf.calls.some((c) => c.path === '/sobjects/Provider_Order__c' && c.method === 'POST'), false);
   assert.equal(sf.calls.find((c) => c.method === 'POST' && c.path === '/composite/sobjects').body.records.length, 2);
 });
+
+// --- Upsert on Shopify_Order_ID__c (after the backfill) ---
+
+function upsertSf({ existed, existingLines = [] }) {
+  const calls = [];
+  return {
+    calls,
+    async request(method, path, body) {
+      calls.push({ method, path, body });
+      if (method === 'PATCH' && path.includes('/Shopify_Order_ID__c/')) return { status: existed ? 200 : 201, data: { id: 'a0EXIST' } };
+      if (path.startsWith('/composite/sobjects')) {
+        return { status: 200, data: body.records.map((r, i) => ({ success: true, id: r.id ?? `a1NEW${i}` })) };
+      }
+      return { status: 204, data: null };
+    },
+    async query(soql) {
+      calls.push({ method: 'QUERY', soql });
+      return existingLines;
+    },
+  };
+}
+const upsertOpts = { ...sfOpts, orderUpsertByShopifyId: true };
+const keyedOrder = () => orderOp({ fields: { ...orderOp().fields, Shopify_Order_ID__c: '5001' } });
+
+test('with upsert on: a new order is upserted by Shopify order ID (key in the URL only)', async () => {
+  const sf = upsertSf({ existed: false });
+  const store = fakeStore();
+  const [result] = await executePlan({ ops: [keyedOrder()] }, sf, upsertOpts, store);
+  const call = sf.calls.find((c) => c.method === 'PATCH' && c.path.includes('/Shopify_Order_ID__c/'));
+  assert.equal(call.path, '/sobjects/Provider_Order__c/Shopify_Order_ID__c/5001');
+  assert.equal('Shopify_Order_ID__c' in call.body, false);
+  assert.equal(result.action, 'created');
+  assert.equal(sf.calls.filter((c) => c.method === 'POST' && c.path === '/composite/sobjects')[0].body.records.length, 2);
+  assert.equal(store.rows.get('5001').salesforce_id, 'a0EXIST');
+});
+
+test('with upsert on: an order already in Salesforce keeps its lines (matched by line ID)', async () => {
+  const sf = upsertSf({ existed: true, existingLines: [{ Id: 'a1OLD', Shopify_Line_Item_ID__c: '11' }] });
+  const store = fakeStore();
+  const [result] = await executePlan({ ops: [keyedOrder()] }, sf, upsertOpts, store);
+  assert.equal(result.action, 'updated');
+  const updated = sf.calls.find((c) => c.method === 'PATCH' && c.path === '/composite/sobjects');
+  assert.equal(updated.body.records[0].id, 'a1OLD');
+  const created = sf.calls.find((c) => c.method === 'POST' && c.path === '/composite/sobjects');
+  assert.equal(created.body.records.length, 1, 'only line 12 is new');
+});
+
+test('with upsert off (default): new orders are still a plain insert', async () => {
+  const sf = fakeSf({ accountExists: true });
+  await executePlan({ ops: [accountOp, keyedOrder()] }, sf, sfOpts, fakeStore());
+  assert.ok(sf.calls.find((c) => c.method === 'POST' && c.path === '/sobjects/Provider_Order__c'));
+});

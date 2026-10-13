@@ -190,9 +190,18 @@ export function mapProviderOrder(order, opts, context = {}) {
       ? (context.isFirstOrder ? 'New' : 'Reorder')
       : undefined,
     Paid__c: PAID_STATUSES.has(order.financial_status),
+    // Added by the Salesforce team (Oct 2026). Shopify_Order_ID__c is
+    // unique and becomes the upsert key once existing orders carry it.
+    Shopify_Order_ID__c: String(order.id),
+    Shopify_Order_Number__c: text(order.name, 80),
+    Shopify_Customer_ID__c: order.customer?.id != null ? String(order.customer.id) : undefined,
+    // Kept apart from Order_Amount__c (the subtotal); nothing once cancelled.
+    Shipping_Amount__c: cancelled ? 0 : money(order.total_shipping_price_set?.shop_money?.amount),
+    Tax_Amount__c: cancelled ? 0 : money(order.current_total_tax ?? order.total_tax),
   });
 
   const lines = (order.line_items || []).map((li) => {
+    const sku = clean(li.sku);
     const quantity = Number(li.current_quantity ?? li.quantity ?? 0);
     const orderedQuantity = Number(li.quantity) || quantity || 1;
     const discount = (li.discount_allocations || []).reduce((sum, d) => sum + Number(d.amount || 0), 0);
@@ -206,6 +215,15 @@ export function mapProviderOrder(order, opts, context = {}) {
         // "Price for one unit as charged on this order": after discounts.
         Unit_Price__c: money(Number(li.price) - discount / orderedQuantity),
         Product_Name__c: text(name, 255),
+        // Added by the Salesforce team (Oct 2026); Shopify_Line_Item_ID__c is
+        // the line's unique upsert key.
+        Shopify_Line_Item_ID__c: String(li.id),
+        SKU__c: text(sku, 255),
+        Shopify_Product_ID__c: li.product_id != null ? String(li.product_id) : undefined,
+        Shopify_Variant_ID__c: li.variant_id != null ? String(li.variant_id) : undefined,
+        // The free samples are the products whose SKU ends in "-SAMPLE"
+        // (the Cu GLOW samples). Lines discounted to $0 are not samples.
+        Sample_Item__c: /-SAMPLE$/i.test(sku ?? ''),
       }),
     };
   });

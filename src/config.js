@@ -45,6 +45,10 @@ export const config = {
     // them with `npm run sf-describe -- --list`.
     orderObject: env.SF_ORDER_OBJECT || 'Provider_Order__c',
     orderLineObject: env.SF_ORDER_LINE_OBJECT || 'Order_Product__c',
+    // Create new orders by upserting on Shopify_Order_ID__c instead of a
+    // plain insert. Switch on only after every existing order and line has
+    // its Shopify ID filled in (Salesforce team's instruction).
+    orderUpsertByShopifyId: bool(env.ORDER_UPSERT_BY_SHOPIFY_ID),
   },
 
   mapping: {

@@ -29,6 +29,8 @@ services:
         sync: false
       - key: PROVIDER_ID_METAFIELD
         sync: false
+      - key: ORDER_UPSERT_BY_SHOPIFY_ID
+        sync: false
       - key: SHOPIFY_LINE_OF_BUSINESS
         value: Alpha BioMed
 

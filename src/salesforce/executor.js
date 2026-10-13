@@ -180,20 +180,47 @@ async function upsertOrder(op, accountId, sf, opts, store) {
 }
 
 async function createOrder(op, accountForOrder, sf, opts, store) {
-  const res = await sf.request('POST', `/sobjects/${opts.orderObject}`, {
-    ...op.fields,
-    ...(accountForOrder && { Account__c: accountForOrder }),
-  });
+  const body = { ...op.fields, ...(accountForOrder && { Account__c: accountForOrder }) };
+  let id;
+  let action = 'created';
+  let lines = {};
+
+  if (opts.orderUpsertByShopifyId && op.fields.Shopify_Order_ID__c) {
+    // Upsert on the Shopify order ID: if the order is already in Salesforce
+    // (e.g. the local link was lost) it is updated, never duplicated. The
+    // key goes in the URL, not the body.
+    const { Shopify_Order_ID__c: key, ...rest } = body;
+    const byKey = `/sobjects/${opts.orderObject}/Shopify_Order_ID__c/${encodeURIComponent(key)}`;
+    const res = await sf.request('PATCH', byKey, rest);
+    id = res.data?.id ?? (await getOrNull(sf, `${byKey}?fields=Id`))?.Id;
+    if (res.status !== 201) {
+      action = 'updated';
+      lines = await existingLines(sf, opts, id);
+    }
+  } else {
+    const res = await sf.request('POST', `/sobjects/${opts.orderObject}`, body);
+    id = res.data.id;
+  }
+
   const saved = {
     shopifyOrderId: op.shopifyOrderId,
-    salesforceId: res.data.id,
+    salesforceId: id,
     shopifyCustomerId: op.shopifyCustomerId,
     accountId: accountForOrder,
-    lines: {},
+    lines,
   };
   await store.saveOrderLink(saved);
-  const lines = await syncLines(op, saved, sf, opts, store);
-  return { op: 'upsertOrder', action: 'created', id: res.data.id, orderNumber: op.orderNumber, linked: Boolean(accountForOrder), lines };
+  const lineResult = await syncLines(op, saved, sf, opts, store);
+  return { op: 'upsertOrder', action, id, orderNumber: op.orderNumber, linked: Boolean(accountForOrder), lines: lineResult };
+}
+
+// Lines already on an order in Salesforce, by Shopify line item ID, so an
+// order found by upsert has its lines updated rather than added again.
+async function existingLines(sf, opts, orderId) {
+  const rows = await sf.query(
+    `SELECT Id, Shopify_Line_Item_ID__c FROM ${opts.orderLineObject} WHERE Provider_Order__c = ${soqlString(orderId)}`,
+  );
+  return Object.fromEntries(rows.filter((r) => r.Shopify_Line_Item_ID__c).map((r) => [r.Shopify_Line_Item_ID__c, r.Id]));
 }
 
 // Order Product lines, through sObject Collections (200 records per call,

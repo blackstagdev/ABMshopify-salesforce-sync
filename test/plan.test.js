@@ -124,11 +124,15 @@ test('order with a Provider ID: Account (Active) + Contact + Provider Order with
     Order_Date__c: '2026-09-20',
     Order_Type__c: 'New',
     Paid__c: true,
+    Shopify_Order_ID__c: '5001',
+    Shopify_Order_Number__c: '#1001',
+    Shopify_Customer_ID__c: '7382910',
+    Shipping_Amount__c: 15,
   });
   assert.deepEqual(op.lines[0], {
     shopifyLineId: '11',
     remove: false,
-    fields: { Quantity__c: 2, Unit_Price__c: 120, Product_Name__c: 'Kit - 5mg' },
+    fields: { Quantity__c: 2, Unit_Price__c: 120, Product_Name__c: 'Kit - 5mg', Shopify_Line_Item_ID__c: '11', Sample_Item__c: false },
   });
   assert.equal(op.lines[1].remove, true);
 });
@@ -222,4 +226,26 @@ test('customers that look like the same practice are flagged', async () => {
   assert.match(notes.get('3'), /Albert C/, 'company match ignores case and spacing');
   assert.equal(notes.has('4'), false, 'free-mail domains are not a match');
   assert.match(notes.get('5'), /Fay H/);
+});
+
+test('new order fields: tax, SKU, product/variant ids and the sample tick', () => {
+  const o = {
+    ...order,
+    current_total_tax: '8.25',
+    line_items: [
+      { id: 21, title: 'Cu GLOW Anti-Aging Serum Sample', sku: 'CUG-AAS-30-SAMPLE', product_id: 9, variant_id: 10, quantity: 1, price: '0.00' },
+      { id: 22, title: 'NAD+ (1000mg)', sku: 'NAD-SN-1000-6ML', quantity: 1, price: '50.00', discount_allocations: [{ amount: '50.00' }] },
+    ],
+  };
+  const op = buildPlan('orders/updated', o, orderOpts, {}).ops.at(-1);
+  assert.equal(op.fields.Tax_Amount__c, 8.25);
+  assert.deepEqual(op.lines[0].fields, {
+    Quantity__c: 1, Unit_Price__c: 0, Product_Name__c: 'Cu GLOW Anti-Aging Serum Sample',
+    Shopify_Line_Item_ID__c: '21', SKU__c: 'CUG-AAS-30-SAMPLE', Shopify_Product_ID__c: '9', Shopify_Variant_ID__c: '10', Sample_Item__c: true,
+  });
+  assert.equal(op.lines[1].fields.Sample_Item__c, false, 'discounted to $0 is not a sample');
+
+  const cancelled = buildPlan('orders/updated', { ...o, cancelled_at: '2026-09-21T00:00:00Z' }, orderOpts, {}).ops.at(-1);
+  assert.equal(cancelled.fields.Shipping_Amount__c, 0);
+  assert.equal(cancelled.fields.Tax_Amount__c, 0);
 });
