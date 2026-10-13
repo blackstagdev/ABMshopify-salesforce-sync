@@ -193,7 +193,7 @@ export function mapProviderOrder(order, opts, context = {}) {
     // Added by the Salesforce team (Oct 2026). Shopify_Order_ID__c is
     // unique and becomes the upsert key once existing orders carry it.
     Shopify_Order_ID__c: String(order.id),
-    Shopify_Order_Number__c: text(order.name, 80),
+    Shopify_Order_Number__c: text(order.name, 30),
     Shopify_Customer_ID__c: order.customer?.id != null ? String(order.customer.id) : undefined,
     // Kept apart from Order_Amount__c (the subtotal); nothing once cancelled.
     Shipping_Amount__c: cancelled ? 0 : money(order.total_shipping_price_set?.shop_money?.amount),
@@ -218,7 +218,7 @@ export function mapProviderOrder(order, opts, context = {}) {
         // Added by the Salesforce team (Oct 2026); Shopify_Line_Item_ID__c is
         // the line's unique upsert key.
         Shopify_Line_Item_ID__c: String(li.id),
-        SKU__c: text(sku, 255),
+        SKU__c: text(sku, 100),
         Shopify_Product_ID__c: li.product_id != null ? String(li.product_id) : undefined,
         Shopify_Variant_ID__c: li.variant_id != null ? String(li.variant_id) : undefined,
         // The free samples are the products whose SKU ends in "-SAMPLE"
