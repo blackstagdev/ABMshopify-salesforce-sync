@@ -6,9 +6,10 @@
 // reseller details.
 import { clean, text, compact, checkEmail } from '../mapping/fields.js';
 
-// cfg: { lineOfBusiness, adLeadTag }
+// cfg: { lineOfBusiness, adLeadTag, leadIdField? }
 // fieldKeyById: GHL custom field id -> fieldKey, e.g. "contact.clinic_name"
-export function mapLead(opportunity, contact, fieldKeyById, cfg) {
+// status: the Lead Status for this opportunity (see leadStatusFor)
+export function mapLead(opportunity, contact, fieldKeyById, cfg, status) {
   const warnings = [];
   const blockers = [];
   const custom = customValues(contact, fieldKeyById);
@@ -50,6 +51,10 @@ export function mapLead(opportunity, contact, fieldKeyById, cfg) {
     Line_of_Business__c: cfg.lineOfBusiness,
     // "Black Stag" leads are round-robined across the line's reps.
     LeadSource: isAdLead ? 'Black Stag' : undefined,
+    // From the GHL stage, per the mapping in config.js.
+    Status: status,
+    // The GHL contact ID, once the Salesforce team has added a field for it.
+    ...(cfg.leadIdField && contact?.id ? { [cfg.leadIdField]: String(contact.id) } : {}),
     // Entered_Salesforce__c is left blank on purpose: the Salesforce team
     // asked for it (Oct 2026), since Salesforce stamps it and it starts their
     // follow-up alerts.
@@ -59,12 +64,15 @@ export function mapLead(opportunity, contact, fieldKeyById, cfg) {
   return { fields, warnings, blockers, isAdLead };
 }
 
-// An opportunity is synced only while it is open in the configured stage.
-export function isLeadOpportunity(opportunity, cfg) {
-  return Boolean(opportunity)
-    && opportunity.pipelineId === cfg.pipelineId
-    && (opportunity.pipelineStageId ?? opportunity.pipelineStageUId) === cfg.stageId
-    && String(opportunity.status ?? '').toLowerCase() === 'open';
+// The Salesforce Lead Status for an opportunity, or null when it is not a
+// lead we send (other pipeline, or a stage that isn't mapped). Lost and
+// abandoned opportunities are "Unresponsive", as Alpha BioMed decided.
+export function leadStatusFor(opportunity, cfg) {
+  if (!opportunity || opportunity.pipelineId !== cfg.pipelineId) return null;
+  const stageStatus = cfg.stageStatus?.[opportunity.pipelineStageId ?? opportunity.pipelineStageUId];
+  if (!stageStatus) return null;
+  const state = String(opportunity.status ?? '').toLowerCase();
+  return state === 'lost' || state === 'abandoned' ? 'Unresponsive' : stageStatus;
 }
 
 function customValues(contact, fieldKeyById) {

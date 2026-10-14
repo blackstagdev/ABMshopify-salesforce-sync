@@ -1,7 +1,7 @@
 import { buildPlan, customerIdFor, isOrderTopic } from './mapping/plan.js';
 import { executePlan } from './salesforce/executor.js';
 import { BlockedError } from './errors.js';
-import { mapLead, isLeadOpportunity } from './ghl/leads.js';
+import { mapLead, leadStatusFor } from './ghl/leads.js';
 
 export const GHL_TOPIC = 'ghl/opportunity';
 
@@ -27,31 +27,46 @@ export async function processEvent(event, deps) {
   return { status: 'synced', result: { ...plan, outcome } };
 }
 
-// A GHL Workflow ping (or backfill entry) for an opportunity in a lead
-// stage. The current opportunity and contact are read from GHL, so a lead
-// that has since moved on or closed is not sent.
+// A GHL Workflow ping (or backfill entry) for an opportunity in the lead
+// pipeline. The current opportunity and contact are read from GHL; its
+// stage (and won/lost/abandoned state) decides the Lead Status.
 async function processGhlEvent(event, { mode, ghl, ghlConfig, salesforce, sf, store }) {
   const account = ghl?.[event.payload.account];
   if (!account) throw new BlockedError(`GHL sub-account "${event.payload.account}" is not configured (token and location id)`);
 
-  const opportunities = (await account.findOpportunities(event.payload)).filter((o) => isLeadOpportunity(o, account.cfg));
-  if (opportunities.length === 0) {
-    return { status: 'ignored', result: { reason: 'No open opportunity in the lead stage (moved on, closed or not found)' } };
+  // One Lead per contact: if a contact has several opportunities in the
+  // pipeline, the most recently updated one sets the status.
+  const latestByContact = new Map();
+  for (const opp of await account.findOpportunities(event.payload)) {
+    const status = leadStatusFor(opp, account.cfg);
+    const contactId = opp.contactId ?? opp.contact?.id;
+    if (!status || !contactId) continue;
+    const prev = latestByContact.get(contactId);
+    if (!prev || String(opp.updatedAt ?? '') > String(prev.opp.updatedAt ?? '')) latestByContact.set(contactId, { opp, status });
+  }
+  if (latestByContact.size === 0) {
+    return { status: 'ignored', result: { reason: 'Not in a lead stage of the pipeline (other pipeline, unmapped stage, or not found)' } };
   }
 
   const fieldKeys = await account.fieldKeys();
   const plan = { ops: [], warnings: [], blockers: [] };
-  for (const opp of opportunities) {
-    const contactId = opp.contactId ?? opp.contact?.id;
-    const contact = contactId ? await account.client.contact(contactId) : null;
+  for (const [contactId, { opp, status }] of latestByContact) {
+    const contact = await account.client.contact(contactId);
     if (!contact) {
       plan.blockers.push(`Opportunity ${opp.id} has no readable contact`);
       continue;
     }
-    const lead = mapLead(opp, contact, fieldKeys, account.cfg);
+    const lead = mapLead(opp, contact, fieldKeys, account.cfg, status);
     plan.warnings.push(...lead.warnings);
     plan.blockers.push(...lead.blockers);
-    plan.ops.push({ op: 'createLead', account: account.name, ghlContactId: contactId, ghlOpportunityId: opp.id, fields: lead.fields });
+    plan.ops.push({
+      op: 'upsertLead',
+      account: account.name,
+      ghlContactId: contactId,
+      ghlOpportunityId: opp.id,
+      idField: account.cfg.leadIdField || undefined,
+      fields: lead.fields,
+    });
   }
 
   if (!ghlConfig?.leadSyncEnabled) {

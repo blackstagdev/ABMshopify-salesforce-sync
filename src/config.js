@@ -73,21 +73,44 @@ export const config = {
     leadSyncEnabled: bool(env.LEAD_SYNC_ENABLED),
     // Contacts with exactly this tag get LeadSource "Black Stag".
     adLeadTag: env.GHL_AD_LEAD_TAG || 'bsd-lead',
+    // Set to the Lead field holding the GHL contact ID once the Salesforce
+    // team has added it (e.g. GHL_Contact_ID__c): it is then sent on every
+    // lead, and new leads are upserted on it.
+    leadIdField: env.LEAD_GHL_ID_FIELD || '',
     accounts: {
       abm: {
         token: env.GHL_ABM_TOKEN,
         locationId: env.GHL_ABM_LOCATION_ID,
-        // "1. Providers (RK)" / "New Providers"
+        // "1. Providers (RK)"
         pipelineId: env.GHL_ABM_PIPELINE_ID || 'xzG1wOpYZyN99Vx90r8y',
-        stageId: env.GHL_ABM_STAGE_ID || '249396ff-9b90-4680-8d1c-54d6fffd4c50',
+        // GHL stage id -> Salesforce Lead Status, confirmed by Alpha BioMed
+        // (Oct 2026). Stages not listed are not sent: GPO & Partners,
+        // 30/60/90-day-risk, Abandoned (legacy), Archive (120 days).
+        stageStatus: {
+          '249396ff-9b90-4680-8d1c-54d6fffd4c50': 'New', // New Providers
+          '54dd431b-62e6-4edd-b988-e51e5fb60007': 'Contacted', // NPI For Review
+          '7ae94ed2-a545-49e1-bd99-4515ed140e55': 'Contacted', // In Communication with CS
+          '278eae1c-08be-4674-a63c-a47e3879d2a4': 'Contacted', // Escalate to Sales
+          '9d4e66a2-8081-4ec7-ab92-57a844c547f1': 'Contacted', // In Communication with Sales
+          'a19201db-0cc2-4b90-b4e1-5e873d942d06': 'Qualified', // Send Document
+          'bd825aaf-429e-4178-9b1f-01de76a7915c': 'Contacted', // Duplicate NPI
+          'a3bbd48b-b59a-48a0-8814-56fe6fc5a356': 'Disqualified', // Declined
+          '3ee61973-f406-4ca9-82f5-c18bdffcc56d': 'Qualified', // Referred - Approved
+          '7448b37d-9797-43b1-b072-9aed7b34201d': 'Qualified', // Unassigned - Approved
+          '869b73ff-e891-4d98-928c-8f870e70ee09': 'Unresponsive', // Dormant
+          '66fa7cf2-2174-41cd-874f-eaea5b57ea5a': 'Qualified', // For Reactivation
+        },
         lineOfBusiness: 'Alpha BioMed',
       },
       sync: {
         token: env.GHL_SYNC_TOKEN,
         locationId: env.GHL_SYNC_LOCATION_ID,
-        // "Alpha Sync" / "New Leads"
+        // "Alpha Sync"
         pipelineId: env.GHL_SYNC_PIPELINE_ID || 'PIcnQ1WBD42DuTbQDfgx',
-        stageId: env.GHL_SYNC_STAGE_ID || 'c0647486-8964-46e9-8df0-a194c911b98b',
+        // Only the first stage for now (no AlphaSync mapping agreed yet).
+        stageStatus: {
+          'c0647486-8964-46e9-8df0-a194c911b98b': 'New', // New Leads
+        },
         lineOfBusiness: 'AlphaSync',
       },
     },

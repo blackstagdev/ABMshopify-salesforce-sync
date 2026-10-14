@@ -27,8 +27,8 @@ export async function executePlan(plan, sf, opts, store) {
       case 'upsertOrder':
         results.push(await upsertOrder(op, accountId, sf, opts, store));
         break;
-      case 'createLead':
-        results.push(await createLead(op, sf, store));
+      case 'upsertLead':
+        results.push(await upsertLead(op, sf, store));
         break;
       default:
         throw new Error(`Unknown operation ${op.op}`);
@@ -261,24 +261,56 @@ async function syncLines(op, saved, sf, opts, store) {
   return { created: toCreate.length, updated: toUpdate.length, deleted: toDelete.length };
 }
 
-// A GHL lead becomes one Salesforce Lead, once per GHL contact and
-// sub-account. Lead has no external ID, so the link table remembers it; a
-// contact that enters the stage again is not re-created. Salesforce assigns
-// the owner on insert.
-async function createLead(op, sf, store) {
+// A GHL lead becomes one Salesforce Lead per GHL contact and sub-account.
+// It is created once (Salesforce routes it to an owner); afterwards only its
+// Status follows the GHL stage, so anything reps change in Salesforce is left
+// alone. The link table holds the Salesforce Id. With a GHL ID field
+// (op.idField), that ID is also filled in, and new leads are upserted on it so
+// a lead can't be created twice even without the link.
+async function upsertLead(op, sf, store) {
   if (!store) throw new Error('Lead sync needs the database');
   const link = await store.getLeadLink(op.account, op.ghlContactId);
+
   if (link) {
-    return { op: 'createLead', action: 'exists', id: link.salesforce_id, ghlContactId: op.ghlContactId };
+    const patch = {
+      ...(op.fields.Status && { Status: op.fields.Status }),
+      ...(op.idField && { [op.idField]: op.fields[op.idField] }),
+    };
+    try {
+      if (Object.keys(patch).length > 0) await sf.request('PATCH', `/sobjects/Lead/${link.salesforce_id}`, patch);
+    } catch (err) {
+      // Converted into an Account/Contact by sales: it's no longer a lead.
+      if (/CANNOT_UPDATE_CONVERTED_LEAD/.test(err.message ?? '')) {
+        return { op: 'upsertLead', action: 'converted', id: link.salesforce_id, ghlContactId: op.ghlContactId };
+      }
+      // Deleted in Salesforce: someone removed it on purpose, don't recreate.
+      if (err.status === 404) {
+        return { op: 'upsertLead', action: 'deleted in Salesforce', id: link.salesforce_id, ghlContactId: op.ghlContactId };
+      }
+      throw err;
+    }
+    return { op: 'upsertLead', action: 'updated', id: link.salesforce_id, status: patch.Status, ghlContactId: op.ghlContactId };
   }
-  const res = await sf.request('POST', '/sobjects/Lead', op.fields);
+
+  let id;
+  let action = 'created';
+  const key = op.idField ? op.fields[op.idField] : null;
+  if (key) {
+    const { [op.idField]: _, ...body } = op.fields;
+    const byKey = `/sobjects/Lead/${op.idField}/${encodeURIComponent(key)}`;
+    const res = await sf.request('PATCH', byKey, body);
+    id = res.data?.id ?? (await getOrNull(sf, `${byKey}?fields=Id`))?.Id;
+    if (res.status !== 201) action = 'updated';
+  } else {
+    id = (await sf.request('POST', '/sobjects/Lead', op.fields)).data.id;
+  }
   await store.saveLeadLink({
     account: op.account,
     ghlContactId: op.ghlContactId,
     ghlOpportunityId: op.ghlOpportunityId,
-    salesforceId: res.data.id,
+    salesforceId: id,
   });
-  return { op: 'createLead', action: 'created', id: res.data.id, ghlContactId: op.ghlContactId };
+  return { op: 'upsertLead', action, id, status: op.fields.Status, ghlContactId: op.ghlContactId };
 }
 
 // Orders sent while the customer had no Provider ID are linked to the

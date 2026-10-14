@@ -67,6 +67,8 @@ services:
         generateValue: true
       - key: LEAD_SYNC_ENABLED
         sync: false
+      - key: LEAD_GHL_ID_FIELD
+        sync: false
 
 databases:
   - name: shopify-salesforce-sync-db

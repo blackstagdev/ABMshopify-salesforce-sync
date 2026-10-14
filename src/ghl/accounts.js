@@ -1,4 +1,4 @@
-// The configured GHL sub-accounts, each with its lead stage, wrapped with
+// The configured GHL sub-accounts, each with its lead pipeline, wrapped with
 // the lookups the processor needs. Reads from GHL only.
 import { createGhlClient } from './client.js';
 
@@ -6,7 +6,7 @@ export function createGhlAccounts(ghlConfig, fetchImpl = fetch) {
   const accounts = {};
   for (const [name, cfg] of Object.entries(ghlConfig.accounts)) {
     if (!cfg.token || !cfg.locationId) continue;
-    accounts[name] = wrapAccount(name, { ...cfg, adLeadTag: ghlConfig.adLeadTag }, createGhlClient(cfg, fetchImpl));
+    accounts[name] = wrapAccount(name, { ...cfg, adLeadTag: ghlConfig.adLeadTag, leadIdField: ghlConfig.leadIdField }, createGhlClient(cfg, fetchImpl));
   }
   return accounts;
 }
@@ -22,8 +22,9 @@ export function wrapAccount(name, cfg, client) {
       fieldKeys ??= Object.fromEntries((await client.customFields()).map((f) => [f.id, f.fieldKey ?? f.id]));
       return fieldKeys;
     },
-    // The open opportunities in the lead stage for this event: the one named
-    // in the webhook, or all of the contact's.
+    // The opportunities for this event: the one named in the webhook, or
+    // all of the contact's in the lead pipeline (any stage, any status; the
+    // processor decides which count as leads).
     async findOpportunities({ opportunityId, contactId }) {
       if (opportunityId) {
         const opp = await client.opportunity(opportunityId);
@@ -31,7 +32,7 @@ export function wrapAccount(name, cfg, client) {
       }
       if (!contactId) return [];
       const { opportunities } = await client.searchOpportunities({
-        pipelineId: cfg.pipelineId, stageId: cfg.stageId, contactId, status: 'open', limit: 20,
+        pipelineId: cfg.pipelineId, contactId, status: 'all', limit: 20,
       });
       return opportunities;
     },

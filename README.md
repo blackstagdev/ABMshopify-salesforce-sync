@@ -49,10 +49,12 @@ The service never sends:
 
 Open opportunities in a GoHighLevel lead stage become Salesforce **Leads**. This runs when `LEAD_SYNC_ENABLED=true`, and follows `SALESFORCE_MODE` like everything else.
 
-| Sub-account | Pipeline / stage | Line of Business |
+| Sub-account | Pipeline / stages | Line of Business |
 |---|---|---|
-| Alpha BioMed | 1. Providers (RK) / New Providers | Alpha BioMed |
-| Alpha Sync | Alpha Sync / New Leads | AlphaSync |
+| Alpha BioMed | 1. Providers (RK): 12 mapped stages, each with a Lead Status (see `stageStatus` in src/config.js) | Alpha BioMed |
+| Alpha Sync | Alpha Sync / New Leads → New | AlphaSync |
+
+Lost or abandoned opportunities are sent with Status **Unresponsive**. After a Lead is created, only its **Status** is updated as it moves through GHL.
 
 - **Webhook:** a GHL Workflow (trigger: opportunity enters the stage; action: Webhook) POSTs to `/webhooks/ghl/abm?secret=<GHL_WEBHOOK_SECRET>` (or `/sync`). Add custom data `contact_id` = `{{contact.id}}` and `opportunity_id` = `{{opportunity.id}}`. The app re-reads both records from GHL, and only sends opportunities that are still **open** in that stage.
 - **Existing leads:** `npm run ghl-backfill -- --account=abm` (or `sync`).

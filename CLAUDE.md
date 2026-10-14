@@ -54,12 +54,14 @@ The current workbook is "Alpha BioMed - Salesforce Field Reference (Lead, Accoun
   - Orders from customers without a Provider ID go out unlinked, and are linked when the Account is next upserted.
   - Gated by `ORDER_SYNC_ENABLED`.
 - **GHL leads → Salesforce Lead** (src/ghl/, topic `ghl/opportunity`):
-  - Source: open opportunities in one stage per sub-account. Alpha BioMed: "1. Providers (RK)" / "New Providers" → Line of Business Alpha BioMed. Alpha Sync: "Alpha Sync" / "New Leads" → AlphaSync. The ids are in config.js and can be overridden by env.
-  - A GHL Workflow webhook (`/webhooks/ghl/:account?secret=GHL_WEBHOOK_SECRET`) sends ids only. The worker re-reads the opportunity and contact from GHL. `npm run ghl-backfill` queues what's already in the stage.
+  - Alpha BioMed: pipeline "1. Providers (RK)". Only the stages in `config.ghl.accounts.abm.stageStatus` are sent, each mapped to a Lead Status (mapping confirmed by Alpha BioMed, Oct 2026). GPO & Partners, the 30/60/90-day-risk stages, Abandoned (legacy) and Archive are not sent. Lost or abandoned opportunities → "Unresponsive". No other pipelines.
+  - Alpha Sync: pipeline "Alpha Sync", stage "New Leads" → "New" only (no mapping agreed yet).
+  - A GHL Workflow webhook (`/webhooks/ghl/:account?secret=GHL_WEBHOOK_SECRET`) sends ids only. The worker re-reads the opportunity and contact from GHL. One Lead per contact; the contact's most recently updated opportunity in the pipeline sets the status.
+  - Created once (Salesforce routes the owner). After that, only Status is updated, by the Salesforce Id held in `salesforce_leads`. Converted or deleted Leads are left alone.
+  - `LEAD_GHL_ID_FIELD` (e.g. GHL_Contact_ID__c, once the Salesforce team adds it): the GHL contact ID is sent on every create and update, and new Leads are upserted on it.
   - Company = companyName, or else the "Clinic Name" custom field (contact.clinic_name). The exact tag `bsd-lead` → LeadSource "Black Stag".
-  - Never send Entered_Salesforce__c: the Salesforce team asked for it to stay blank, because it starts their follow-up alerts.
-  - Never send OwnerId (Salesforce routes by State) or Self_Sourced__c, nor NPI, EIN or reseller data.
-  - One Lead per GHL contact per sub-account (`salesforce_leads` table). It's created once, never updated.
+  - Never send Entered_Salesforce__c (it starts the Salesforce team's alerts), OwnerId, Self_Sourced__c, NPI, EIN or reseller data.
+  - `npm run ghl-backfill -- --account=abm --limit=10` queues existing leads from the mapped stages.
   - Gated by `LEAD_SYNC_ENABLED`.
 
 ## Conventions
