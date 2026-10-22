@@ -44,4 +44,17 @@ if (failures.length) {
 console.log(queue.waiting < 200
   ? '\nQueue is (nearly) empty: run the next batch with  npm run backfill -- --orders --limit=15000'
   : '\nStill working through the queue: check again later.');
+
+// Reminder: customers whose latest event is from the dry-run period have
+// never been sent. They need a customer backfill once the orders are done.
+const [neverSent] = await q(
+  `SELECT count(*)::int AS n FROM (
+     SELECT DISTINCT ON (payload->>'id') status FROM shopify_events
+     WHERE topic LIKE 'customers/%' ORDER BY payload->>'id', id DESC
+   ) latest WHERE status = 'dry_run'`,
+);
+if (neverSent.n > 0) {
+  console.log(`\nREMINDER: ${neverSent.n} customers have never been sent to Salesforce (last seen in dry run).`);
+  console.log('When the order backfill is finished, run:  npm run backfill -- --customers');
+}
 await db.pool.end();
