@@ -17,22 +17,22 @@ const shopifyValue = async (path, key) => {
 const ABM = "Line_of_Business__c = 'Alpha BioMed'";
 
 // --- Sales ---
-const [orders] = (await soql(`SELECT COUNT(Id) n, MIN(Order_Date__c) first, MAX(Order_Date__c) last, SUM(Order_Amount__c) amount FROM Provider_Order__c WHERE ${ABM}`)).records;
+const [orders] = (await soql(`SELECT COUNT(Id) n, MIN(Order_Date__c) firstDate, MAX(Order_Date__c) lastDate, SUM(Order_Amount__c) total FROM Provider_Order__c WHERE ${ABM}`)).records;
 const unlinked = await count(`SELECT COUNT() FROM Provider_Order__c WHERE ${ABM} AND Account__c = null`);
 const shopifyOrders = await shopifyValue('/orders/count.json?status=any', 'count');
 const [oldestShopify] = (await shopifyValue('/orders.json?status=any&limit=1&order=created_at%20asc&fields=name,created_at', 'orders')) ?? [];
 
 console.log('\nSALES (Alpha BioMed orders)');
 console.table([
-  { where: 'Salesforce', orders: orders.n, earliest: orders.first, latest: orders.last, amount: Math.round(orders.amount ?? 0) },
+  { where: 'Salesforce', orders: orders.n, earliest: orders.firstDate, latest: orders.lastDate, amount: Math.round(orders.total ?? 0) },
   { where: 'Shopify (visible to the app)', orders: shopifyOrders, earliest: oldestShopify?.created_at?.slice(0, 10) ?? '?', latest: '', amount: '' },
 ]);
 console.log(`Orders in Salesforce not linked to a practice: ${unlinked}`);
 console.log('Note: without the read_all_orders scope Shopify only shows the app the last 60 days, so its count and earliest date stop there too.');
 
 console.log('\nOrders per month in Salesforce:');
-const months = (await soql(`SELECT CALENDAR_YEAR(Order_Date__c) y, CALENDAR_MONTH(Order_Date__c) m, COUNT(Id) n, SUM(Order_Amount__c) amount FROM Provider_Order__c WHERE ${ABM} GROUP BY CALENDAR_YEAR(Order_Date__c), CALENDAR_MONTH(Order_Date__c) ORDER BY CALENDAR_YEAR(Order_Date__c), CALENDAR_MONTH(Order_Date__c)`)).records;
-console.table(months.map((r) => ({ month: `${r.y}-${String(r.m).padStart(2, '0')}`, orders: r.n, amount: Math.round(r.amount ?? 0) })));
+const months = (await soql(`SELECT CALENDAR_YEAR(Order_Date__c) y, CALENDAR_MONTH(Order_Date__c) m, COUNT(Id) n, SUM(Order_Amount__c) total FROM Provider_Order__c WHERE ${ABM} GROUP BY CALENDAR_YEAR(Order_Date__c), CALENDAR_MONTH(Order_Date__c) ORDER BY CALENDAR_YEAR(Order_Date__c), CALENDAR_MONTH(Order_Date__c)`)).records;
+console.table(months.map((r) => ({ month: `${r.y}-${String(r.m).padStart(2, '0')}`, orders: r.n, amount: Math.round(r.total ?? 0) })));
 
 // --- Customers ---
 const shopifyCustomers = await shopifyValue('/customers/count.json', 'count');
