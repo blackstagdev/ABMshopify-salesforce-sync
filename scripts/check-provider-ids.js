@@ -5,11 +5,14 @@
 //
 //   npm run check-provider-ids
 //   npm run check-provider-ids -- --missing     also list customers without one
+//   npm run check-provider-ids -- --summary     totals only
 import { config } from '../src/config.js';
 import { createDb } from '../src/db.js';
 import { createShopifyAdmin } from '../src/shopify/admin.js';
 
 const showMissing = process.argv.includes('--missing');
+// --summary: totals only, no per-customer table (useful with thousands of customers).
+const summaryOnly = process.argv.includes('--summary');
 const metafield = config.mapping.providerIdMetafield;
 const dot = metafield.indexOf('.');
 if (dot <= 0) {
@@ -80,10 +83,12 @@ const rows = withId.map((c) => {
   };
 });
 
-if (rows.length) console.table(rows);
-else console.log('No customers have a Provider ID yet.');
+if (!summaryOnly) {
+  if (rows.length) console.table(rows);
+  else console.log('No customers have a Provider ID yet.');
+}
 
-if (showMissing && without.length) {
+if (showMissing && without.length && !summaryOnly) {
   console.log('\nCustomers WITHOUT a Provider ID (not synced):');
   console.table(without.map((c) => ({ 'Shopify ID': c.id, Name: c.name, Email: c.email ?? '', Company: c.company ?? '' })));
 }
@@ -95,12 +100,22 @@ Without one (not synced):  ${without.length}${showMissing ? '' : '   (list them 
 To check:                  ${rows.filter((r) => /TOO LONG|DIFFERENT ID|ONLY in letter case/.test(r.Issues)).length} (TOO LONG, DIFFERENT ID or letter-case issues)`);
 
 const noEvent = rows.filter((r) => r['Latest sync'] === 'no event yet').length;
+const bySync = {};
+for (const r of rows) {
+  const key = r['Latest sync'].split(' ')[0];
+  bySync[key] = (bySync[key] ?? 0) + 1;
+}
+console.log('\nCustomers WITH a Provider ID, by their latest sync:');
+console.table(Object.entries(bySync).map(([state, customers]) => ({ state, customers })));
 if (toRequeue.length) {
-  console.log(`\n${toRequeue.length} customer(s) with a Provider ID were last processed without one or in dry run. To send them again:`);
-  console.log(`  npm run requeue -- --ids=${toRequeue.join(',')}`);
+  console.log(`\n${toRequeue.length} customer(s) with a Provider ID were last processed without one, in dry run, or failed.`);
+  if (!summaryOnly && toRequeue.length <= 200) console.log(`  To send them again: npm run requeue -- --ids=${toRequeue.join(',')}`);
 }
 if (noEvent) {
-  console.log(`\n${noEvent} customer(s) with a Provider ID have no event yet: save each one once in Shopify to send it.`);
+  console.log(`\n${noEvent} customer(s) with a Provider ID have never been sent (no event yet).`);
+}
+if (toRequeue.length + noEvent > 0) {
+  console.log('To send all of them at once: npm run backfill -- --customers');
 }
 
 await db?.pool.end();
