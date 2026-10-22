@@ -21,7 +21,8 @@
     "ghl-explore": "node scripts/ghl-explore.js",
     "ghl-backfill": "node scripts/ghl-backfill.js",
     "data-check": "node scripts/data-check.js",
-    "coverage-check": "node scripts/coverage-check.js"
+    "coverage-check": "node scripts/coverage-check.js",
+    "backfill-status": "node scripts/backfill-status.js"
   },
   "dependencies": {
     "express": "^5.1.0",
