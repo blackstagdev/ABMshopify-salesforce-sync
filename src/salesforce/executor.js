@@ -22,7 +22,18 @@ export async function executePlan(plan, sf, opts, store) {
         break;
       }
       case 'upsertContact':
-        results.push(await upsertContact(op, accountId, sf));
+        try {
+          results.push(await upsertContact(op, accountId, sf));
+        } catch (err) {
+          // The person already exists elsewhere in Salesforce (another
+          // practice or email), so the duplicate rule blocks the Contact. The
+          // practice and the order must still go through.
+          if (!isDuplicateError(err)) throw err;
+          results.push({
+            op: 'upsertContact', action: 'skipped', email: op.email,
+            warning: 'Contact blocked by the duplicate rule: this person already exists in Salesforce',
+          });
+        }
         break;
       case 'upsertOrder':
         results.push(await upsertOrder(op, accountId, sf, opts, store));
