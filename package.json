@@ -23,7 +23,8 @@
     "data-check": "node scripts/data-check.js",
     "coverage-check": "node scripts/coverage-check.js",
     "backfill-status": "node scripts/backfill-status.js",
-    "goaffpro-explore": "node scripts/goaffpro-explore.js"
+    "goaffpro-explore": "node scripts/goaffpro-explore.js",
+    "goaffpro-sync": "node scripts/goaffpro-sync.js"
   },
   "dependencies": {
     "express": "^5.1.0",

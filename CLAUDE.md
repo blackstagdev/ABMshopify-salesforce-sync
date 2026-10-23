@@ -64,6 +64,13 @@ The current workbook is "Alpha BioMed - Salesforce Field Reference (Lead, Accoun
   - `npm run ghl-backfill -- --account=abm --limit=10` queues existing leads from the mapped stages.
   - Gated by `LEAD_SYNC_ENABLED`.
 
+- **GoAffPro affiliates** (src/goaffpro/, `npm run goaffpro-sync`, a job, dry run unless `--apply`):
+  - Approved affiliates only, each becoming an Account with record type Affiliate. Provider_ID__c = the GoAffPro affiliate ID; Referral_Code__c = ref_code. Name = company_name, else the person's name (create-only). Primary_Provider_Name__c, Primary_Email__c, Phone and Billing address are also set.
+  - Upline: GoAffPro parent → Affiliate__c on the affiliate Account.
+  - Practices: the affiliate on the customer's FIRST counted GoAffPro order → Affiliate__c on the practice. The practice is found through the Shopify Provider ID metafield. It always follows GoAffPro, even if someone set a different one. (Alpha BioMed decided these, Oct 2026.)
+  - An Account whose Provider ID belongs to a non-Affiliate record type is never converted.
+  - Sales and commission are not sent: there's no field in the sheet, and the Account revenue fields are DO NOT WRITE.
+
 ## Conventions
 
 - Mapping stays pure and testable. Add a test in `test/plan.test.js` for every mapping change.

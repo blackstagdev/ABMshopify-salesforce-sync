@@ -67,6 +67,16 @@ Lost or abandoned opportunities are sent with Status **Unresponsive**. After a L
 - **Owner:** Salesforce assigns it by State, and the app never sends one.
 - **No duplicates:** one Lead per GHL contact per sub-account. It's created once, then left to the sales team.
 
+## GoAffPro affiliates → Salesforce
+
+`npm run -s goaffpro-sync` is a job. By default it's a dry run: it reads GoAffPro, Shopify and Salesforce and reports what would change. `-- --apply` writes; it needs `SALESFORCE_MODE=live`. Start with `-- --limit=10`.
+
+1. Approved affiliates become **Affiliate Accounts**, upserted on `Provider_ID__c` = the GoAffPro affiliate ID. Fields: Name, Referral Code, contact person, email, phone and address.
+2. Each affiliate's GoAffPro **parent** becomes its `Affiliate__c` (the upline).
+3. Each **referred practice** (the first affiliate on its GoAffPro orders) gets `Affiliate__c`. The practice is matched through its Provider ID.
+
+GoAffPro sales and commission totals aren't sent: Salesforce has no field for them yet. `npm run -s goaffpro-explore` shows the raw GoAffPro fields.
+
 ## Event statuses
 
 | Status | Meaning |
