@@ -69,6 +69,9 @@ services:
         sync: false
       - key: LEAD_GHL_ID_FIELD
         sync: false
+      # GoAffPro API access token (affiliates)
+      - key: GOAFFPRO_ACCESS_TOKEN
+        sync: false
 
 databases:
   - name: shopify-salesforce-sync-db

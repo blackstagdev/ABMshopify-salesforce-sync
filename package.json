@@ -22,7 +22,8 @@
     "ghl-backfill": "node scripts/ghl-backfill.js",
     "data-check": "node scripts/data-check.js",
     "coverage-check": "node scripts/coverage-check.js",
-    "backfill-status": "node scripts/backfill-status.js"
+    "backfill-status": "node scripts/backfill-status.js",
+    "goaffpro-explore": "node scripts/goaffpro-explore.js"
   },
   "dependencies": {
     "express": "^5.1.0",

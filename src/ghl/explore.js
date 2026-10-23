@@ -3,7 +3,7 @@
 
 // Values that identify a person are shortened unless full output is asked
 // for. These carry no personal data and are always shown in full.
-const SAFE_FIELDS = /(^|\.)(source|tags|type|state|country|status|medium|utm\w*|campaign\w*|adSource|sessionSource|pipeline\w*|dataType)$/i;
+const SAFE_FIELDS = /(^|\.)(source|tags|type|state|country|status|medium|utm\w*|campaign\w*|adSource|sessionSource|pipeline\w*|dataType|id|\w*_id|ref_codes?|coupons?|\w*sales|\w*revenue|\w*commission\w*|balance|amount\w*|total\w*|subtotal|\w*count|orders)$/i;
 
 export function flattenRecord(opportunity, contact, customFieldNames = {}) {
   const out = {};
