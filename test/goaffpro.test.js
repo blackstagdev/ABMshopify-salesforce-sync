@@ -131,3 +131,15 @@ test('an existing non-Affiliate Account with that ID is never converted', async 
   const s = await runAffiliateSync({ ...f, providerIdMetafield: 'custom.provider_id', apply: true });
   assert.match(s.errors.find((e) => e.id === 100).error, /non-Affiliate/);
 });
+
+test('the client stops when GoAffPro ignores the offset', async () => {
+  const { createGoAffProClient } = await import('../src/goaffpro/client.js');
+  const page = { orders: Array.from({ length: 100 }, (_, i) => ({ id: i })) };
+  const fetchImpl = async () => ({ ok: true, status: 200, text: async () => JSON.stringify(page) });
+  const gap = createGoAffProClient({ accessToken: 't' }, fetchImpl);
+  let seen = 0;
+  await assert.rejects(async () => {
+    for await (const _ of gap.list('/orders', 'orders', ['id'])) seen++;
+  }, /same page again/);
+  assert.equal(seen, 100);
+});

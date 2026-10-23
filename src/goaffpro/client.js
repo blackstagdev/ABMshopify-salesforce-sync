@@ -25,13 +25,21 @@ export function createGoAffProClient({ accessToken }, fetchImpl = fetch) {
   }
 
   // GoAffPro returns only the fields asked for, so callers pass a list.
-  // Pages with limit/offset until a short page comes back.
-  async function* list(path, key, fields, { pageSize = 100, max = Infinity } = {}) {
+  // Pages with limit/offset until a short page comes back. A page identical
+  // to the previous one means offset is being ignored: stop rather than loop.
+  async function* list(path, key, fields, { pageSize = 100, max = Infinity, onPage } = {}) {
     let offset = 0;
     let yielded = 0;
+    let previous = null;
     while (yielded < max) {
       const data = await get(path, { fields: fields.join(','), limit: pageSize, offset });
       const rows = data[key] ?? [];
+      const signature = rows.length ? JSON.stringify([rows[0], rows[rows.length - 1]]) : null;
+      if (signature && signature === previous) {
+        throw new Error(`GoAffPro ${path} returned the same page again at offset ${offset}; paging isn't working`);
+      }
+      previous = signature;
+      onPage?.({ offset, rows: rows.length, total: yielded + rows.length });
       for (const row of rows) {
         if (yielded >= max) return;
         yielded++;

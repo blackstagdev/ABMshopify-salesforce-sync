@@ -92,7 +92,11 @@ export async function runAffiliateSync({ gap, sf, shopify, providerIdMetafield, 
   // --- C. Referred practices ---
   log('Reading affiliate orders from GoAffPro...');
   const orders = [];
-  for await (const o of gap.list('/orders', 'orders', ORDER_FIELDS)) orders.push(o);
+  const started = Date.now();
+  const onPage = ({ total }) => {
+    if (total % 5000 < 100) log(`  ${total} orders read (${Math.round((Date.now() - started) / 1000)}s)...`);
+  };
+  for await (const o of gap.list('/orders', 'orders', ORDER_FIELDS, { onPage })) orders.push(o);
   const referred = firstAffiliateByCustomer(orders);
   const syncedIds = new Set(batch.map((a) => String(a.id)));
   summary.practices.referred = referred.size;
