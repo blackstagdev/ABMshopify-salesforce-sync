@@ -102,19 +102,33 @@ export async function runAffiliateSync({ gap, sf, shopify, providerIdMetafield, 
   summary.practices.referred = referred.size;
   log(`${orders.length} affiliate orders; ${referred.size} referred customers.`);
 
+  // Looked up 100 customers at a time: one Shopify request for their
+  // Provider IDs, one SOQL query for the practices.
   const [namespace, key] = providerIdMetafield.split('.');
-  for (const [customerId, affiliateId] of referred) {
-    if (!syncedIds.has(affiliateId)) {
-      summary.practices.affiliateNotSynced++;
+  const todo = [...referred].filter(([, affiliateId]) => {
+    if (syncedIds.has(affiliateId)) return true;
+    summary.practices.affiliateNotSynced++;
+    return false;
+  });
+  for (let i = 0; i < todo.length; i += CHUNK) {
+    const chunk = todo.slice(i, i + CHUNK);
+    let providerIds;
+    let practices;
+    try {
+      providerIds = await shopify.getProviderIds(chunk.map(([customerId]) => customerId), namespace, key);
+      practices = await practicesByProviderId(sf, [...new Set([...providerIds.values()].filter(Boolean))]);
+    } catch (err) {
+      summary.practices.failed += chunk.length;
+      fail('practices', `customers ${chunk[0][0]}..${chunk[chunk.length - 1][0]}`, err);
       continue;
     }
-    try {
-      const { providerIdMetafield: providerId } = await shopify.getCustomerContext(customerId, namespace, key);
-      if (!providerId?.trim()) {
+    for (const [customerId, affiliateId] of chunk) {
+      const providerId = providerIds.get(customerId);
+      if (!providerId) {
         summary.practices.noProviderId++;
         continue;
       }
-      const practice = await getOrNull(sf, `/sobjects/Account/Provider_ID__c/${encodeURIComponent(providerId.trim())}?fields=Id,Affiliate__c`);
+      const practice = practices.get(providerId.toLowerCase());
       if (!practice) {
         summary.practices.notInSalesforce++;
         continue;
@@ -124,15 +138,32 @@ export async function runAffiliateSync({ gap, sf, shopify, providerIdMetafield, 
         summary.practices.unchanged++;
         continue;
       }
-      if (apply) await sf.request('PATCH', `/sobjects/Account/${practice.Id}`, { Affiliate__c: target });
-      summary.practices.linked++;
-    } catch (err) {
-      summary.practices.failed++;
-      fail('practice', customerId, err);
+      try {
+        if (apply) await sf.request('PATCH', `/sobjects/Account/${practice.Id}`, { Affiliate__c: target });
+        summary.practices.linked++;
+      } catch (err) {
+        summary.practices.failed++;
+        fail('practice', customerId, err);
+      }
     }
+    log(`  ${Math.min(i + CHUNK, todo.length)} of ${todo.length} referred customers checked...`);
   }
 
   return summary;
+}
+
+const CHUNK = 100;
+
+// Practice Accounts keyed by lower-cased Provider ID (SOQL text matching
+// ignores case, as the external-ID lookup it replaces does).
+async function practicesByProviderId(sf, providerIds) {
+  const found = new Map();
+  if (!providerIds.length) return found;
+  const rows = await sf.query(
+    `SELECT Id, Provider_ID__c, Affiliate__c FROM Account WHERE Provider_ID__c IN (${providerIds.map(soqlString).join(',')})`,
+  );
+  for (const r of rows) found.set(String(r.Provider_ID__c).toLowerCase(), r);
+  return found;
 }
 
 // An upline that isn't in this batch (e.g. a --limit run) may already be in

@@ -153,5 +153,21 @@ export function createShopifyAdmin(cfg, fetchImpl = fetch) {
     } while (cursor);
   }
 
-  return { paginate, graphql, getCustomerContext, listCustomersWithMetafield };
+  // Provider ID metafield for up to 100 customers in one request:
+  // Map(customer id -> trimmed value, or null).
+  async function getProviderIds(customerIds, namespace, key) {
+    const data = await graphql(
+      `query ($ids: [ID!]!, $namespace: String!, $key: String!) {
+        nodes(ids: $ids) { ... on Customer { legacyResourceId metafield(namespace: $namespace, key: $key) { value } } }
+      }`,
+      { ids: customerIds.map((id) => `gid://shopify/Customer/${id}`), namespace, key },
+    );
+    const values = new Map(customerIds.map((id) => [String(id), null]));
+    for (const n of data.nodes) {
+      if (n?.legacyResourceId) values.set(String(n.legacyResourceId), n.metafield?.value?.trim() || null);
+    }
+    return values;
+  }
+
+  return { paginate, graphql, getCustomerContext, getProviderIds, listCustomersWithMetafield };
 }

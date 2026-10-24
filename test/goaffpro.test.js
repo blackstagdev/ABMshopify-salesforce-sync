@@ -49,7 +49,11 @@ function fakes({ existing = {}, providerIds = {}, failCreate = false } = {}) {
   let n = 0;
   const sf = {
     calls,
-    async query() { return [{ Id: '012AFF' }]; },
+    async query(soql) {
+      if (soql.includes('FROM RecordType')) return [{ Id: '012AFF' }];
+      const ids = [...soql.matchAll(/'([^']+)'/g)].map((m) => m[1]);
+      return ids.filter((id) => accounts[id]).map((id) => ({ ...accounts[id], Provider_ID__c: id }));
+    },
     async request(method, path, body) {
       calls.push({ method, path, body });
       const byPid = path.match(/Provider_ID__c\/([^?]+)/);
@@ -84,7 +88,9 @@ function fakes({ existing = {}, providerIds = {}, failCreate = false } = {}) {
       }
     },
   };
-  const shopify = { async getCustomerContext(id) { return { providerIdMetafield: providerIds[id] ?? null }; } };
+  const shopify = {
+    async getProviderIds(ids) { return new Map(ids.map((id) => [id, providerIds[id] ?? null])); },
+  };
   return { sf, gap, shopify, accounts };
 }
 
