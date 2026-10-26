@@ -34,8 +34,14 @@ export async function runOrderImport({
   const problem = (order, error) => summary.problems.push({ order, error: String(error).slice(0, 300) });
 
   // --- Safety checks ---
-  if (apply && (await db.workerActive())) {
-    throw new Error('The worker is still processing events. Set WORKER_ENABLED=false on Render, wait until the redeploy is live, then run this again.');
+  if (apply) {
+    const w = await db.workerActivity();
+    if (w.processing > 0 || w.finished > 0) {
+      throw new Error(
+        `The worker is still processing events (${w.processing} in progress, ${w.finished} finished in the last 3 minutes, last at ${w.last_finished?.toISOString?.() ?? w.last_finished}). ` +
+        'Set WORKER_ENABLED=false on Render, wait until the redeploy is live and 3 minutes have passed, then run this again.',
+      );
+    }
   }
   const orderOp = await checkKeys(sf, salesforce);
 

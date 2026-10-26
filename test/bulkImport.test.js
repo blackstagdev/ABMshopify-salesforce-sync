@@ -33,7 +33,7 @@ function fakes({ workerActive = false, unique = true, failLine = null } = {}) {
   const jobs = [];
   let n = 0;
   const db = {
-    async workerActive() { return workerActive; },
+    async workerActivity() { return { processing: workerActive ? 1 : 0, finished: 0, last_finished: null }; },
     async orderLinkSummary() { return links; },
     async getOrderLink(id) { return saved.get(id) ?? null; },
     async saveOrderLink(link) { saved.set(link.shopifyOrderId, { ...link, lines: link.lines, account_id: link.accountId }); },

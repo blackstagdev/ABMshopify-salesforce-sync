@@ -119,16 +119,17 @@ export function createDb({ databaseUrl, databaseSsl }) {
     return rowCount;
   }
 
-  // True while a worker is processing events (any finished in the last few
-  // minutes, or one in progress).
-  async function workerActive() {
+  // Signs of a running worker: an event claimed in the last 10 minutes
+  // (older claims are left over from a stopped worker; the worker itself
+  // reclaims them after 10 minutes), or one finished in the last 3.
+  async function workerActivity() {
     const { rows } = await pool.query(
-      `SELECT EXISTS (
-         SELECT 1 FROM shopify_events
-         WHERE status = 'processing' OR (processed_at > now() - interval '3 minutes' AND status <> 'imported')
-       ) AS active`,
+      `SELECT count(*) FILTER (WHERE status = 'processing' AND locked_at > now() - interval '10 minutes')::int AS processing,
+              count(*) FILTER (WHERE processed_at > now() - interval '3 minutes' AND status <> 'imported')::int AS finished,
+              max(processed_at) FILTER (WHERE status <> 'imported') AS last_finished
+       FROM shopify_events`,
     );
-    return rows[0].active;
+    return rows[0];
   }
 
   // Orders sent before their customer had a Provider ID.
@@ -280,7 +281,7 @@ export function createDb({ databaseUrl, databaseSsl }) {
 
   return {
     pool, migrate, insertEvent, claimEvents, finishEvent, retryEvent, deferEvent, listEvents, getEvent, countByStatus,
-    requeue, requeueLatest, latestCustomerEvents, getOrderLink, saveOrderLink, unlinkedOrdersForCustomer, orderLinkSummary, markOrdersImported, workerActive,
+    requeue, requeueLatest, latestCustomerEvents, getOrderLink, saveOrderLink, unlinkedOrdersForCustomer, orderLinkSummary, markOrdersImported, workerActivity,
     getLeadLink, saveLeadLink, ping,
   };
 }
