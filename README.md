@@ -90,6 +90,8 @@ GoAffPro sales and commission totals aren't sent: Salesforce has no field for th
 
 Salesforce 429 and 5xx errors and network errors are retried with backoff (30 s doubling to 1 h, up to `WORKER_MAX_ATTEMPTS`).
 
+The org's daily API allowance is shared with the Salesforce team's own integrations. In live mode, backfill events wait while less than `SALESFORCE_API_RESERVE_PERCENT` (default 30%) of it is left, and live webhooks keep going. If Salesforce still answers `REQUEST_LIMIT_EXCEEDED`, the worker pauses for 30 minutes, and those events wait without using up their attempts.
+
 ## Provider ID and open items
 
 - **Provider ID** is the practice's GHL contact ID, stored in the Shopify customer metafield `custom.provider_id` (`PROVIDER_ID_STRATEGY=customer_metafield`, `PROVIDER_ID_METAFIELD=custom.provider_id`). Customers without one are blocked; their orders go out unlinked. Check with `npm run check-provider-ids`.
@@ -116,6 +118,8 @@ npm run requeue -- --status=synced --latest --topic=orders     # ...orders only 
 npm run -s data-check                      # read-only data answers (amounts, samples, names, test accounts)
 npm run check-provider-ids                 # who has a Provider ID, issues, and latest sync status
 npm run report-duplicates                  # explain DUPLICATES_DETECTED failures
+npm run -s report-shopify-id-conflicts     # Accounts holding the Shopify customer under another Provider ID (CSV)
+npm run requeue -- --status=failed --error=REQUEST_LIMIT_EXCEEDED   # re-send only failures with that text
 npm run ghl-explore -- --account=abm       # GHL pipelines, stage counts, field inventory (read-only)
 npm run ghl-backfill -- --account=abm      # queue the open opportunities already in the lead stage
 npm run sf-describe                        # print Provider_Order__c and other order objects' fields

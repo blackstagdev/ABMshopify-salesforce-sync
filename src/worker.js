@@ -1,25 +1,42 @@
 import { BlockedError } from './errors.js';
+import { isApiLimitError, isBackfill } from './salesforce/apiBudget.js';
+
+// After Salesforce reports the daily API limit, nothing is sent for this long.
+const LIMIT_PAUSE_MS = 30 * 60_000;
 
 // Polls the event table and processes events one at a time, in the order
 // they arrived, so an update is never applied before its create.
-export function startWorker({ db, handle, intervalMs, batchSize, maxAttempts, log = console }) {
+// `budget` (optional) holds backfill events back while the daily Salesforce
+// API allowance is low. Hitting the limit itself pauses everything for a
+// while; those events wait and keep their attempts.
+export function startWorker({ db, handle, intervalMs, batchSize, maxAttempts, budget = null, log = console, now = Date.now }) {
   let stopped = false;
   let timer = null;
   let current = Promise.resolve();
+  let pausedUntil = 0;
 
   async function tick() {
     let claimed = 0;
     try {
-      const events = await db.claimEvents(batchSize);
-      claimed = events.length;
-      for (const event of events) {
-        if (stopped) break;
-        await runOne(event);
+      if (now() >= pausedUntil) {
+        const events = await db.claimEvents(batchSize);
+        claimed = events.length;
+        for (const event of events) {
+          if (stopped || now() < pausedUntil) {
+            await db.deferEvent(event.id, 0);
+            continue;
+          }
+          if (budget && isBackfill(event) && !(await budget.backfillAllowed())) {
+            await db.deferEvent(event.id, 30 * 60);
+            continue;
+          }
+          await runOne(event);
+        }
       }
     } catch (err) {
       log.error('[worker] poll failed:', err.message);
     }
-    if (!stopped) timer = setTimeout(schedule, claimed === batchSize ? 0 : intervalMs);
+    if (!stopped) timer = setTimeout(schedule, claimed === batchSize && now() >= pausedUntil ? 0 : intervalMs);
   }
 
   function schedule() {
@@ -32,7 +49,11 @@ export function startWorker({ db, handle, intervalMs, batchSize, maxAttempts, lo
       await db.finishEvent(event.id, status, result);
       log.info(`[worker] event ${event.id} ${event.topic} -> ${status}`);
     } catch (err) {
-      if (err instanceof BlockedError) {
+      if (isApiLimitError(err)) {
+        pausedUntil = now() + LIMIT_PAUSE_MS;
+        await db.deferEvent(event.id, LIMIT_PAUSE_MS / 1000, err.message);
+        log.warn(`[worker] Salesforce daily API limit reached: pausing ${LIMIT_PAUSE_MS / 60_000} min`);
+      } else if (err instanceof BlockedError) {
         await db.finishEvent(event.id, 'blocked', err.details ?? null, err.message);
         log.warn(`[worker] event ${event.id} blocked: ${err.message}`);
       } else if (err.retryable === false || event.attempts >= maxAttempts) {

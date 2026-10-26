@@ -2,6 +2,7 @@ import { config } from './config.js';
 import { createDb } from './db.js';
 import { createApp } from './server.js';
 import { startWorker } from './worker.js';
+import { createApiBudget } from './salesforce/apiBudget.js';
 import { processEvent } from './processor.js';
 import { createSalesforceClient } from './salesforce/client.js';
 import { createShopifyAdmin } from './shopify/admin.js';
@@ -36,9 +37,15 @@ const server = createApp({ db, config }).listen(config.port, () => {
   console.info(`[startup] listening on port ${config.port}`);
 });
 
+const { apiReservePercent, ...workerOptions } = config.worker;
+const budget = config.salesforce.mode === 'live' && apiReservePercent > 0
+  ? createApiBudget(sf, { reservePercent: apiReservePercent })
+  : null;
+
 const worker = config.worker.enabled
   ? startWorker({
       db,
+      budget,
       handle: (event) => processEvent(event, {
         mode: config.salesforce.mode,
         mapping: config.mapping,
@@ -49,7 +56,7 @@ const worker = config.worker.enabled
         ghlConfig: config.ghl,
         store: db,
       }),
-      ...config.worker,
+      ...workerOptions,
     })
   : null;
 

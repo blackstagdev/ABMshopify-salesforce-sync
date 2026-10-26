@@ -121,5 +121,8 @@ export const config = {
     intervalMs: int(env.WORKER_INTERVAL_MS, 5000),
     batchSize: int(env.WORKER_BATCH_SIZE, 10),
     maxAttempts: int(env.WORKER_MAX_ATTEMPTS, 8),
+    // Backfill events wait while less than this % of the org's daily
+    // Salesforce API allowance is left (live mode only; 0 turns it off).
+    apiReservePercent: int(env.SALESFORCE_API_RESERVE_PERCENT, 30),
   },
 };

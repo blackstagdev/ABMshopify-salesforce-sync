@@ -173,6 +173,18 @@ export function createDb({ databaseUrl, databaseSsl }) {
     );
   }
 
+  // Puts a claimed event back without counting the attempt (it was never
+  // really tried, or failed only because of the API limit).
+  async function deferEvent(id, delaySeconds, error) {
+    await pool.query(
+      `UPDATE shopify_events
+       SET status = 'pending', attempts = greatest(attempts - 1, 0), locked_at = NULL,
+           last_error = coalesce($3, last_error), next_attempt_at = now() + make_interval(secs => $2)
+       WHERE id = $1`,
+      [id, delaySeconds, error ?? null],
+    );
+  }
+
   async function listEvents({ status, limit = 50 }) {
     const { rows } = await pool.query(
       `SELECT id, webhook_id, topic, status, attempts, received_at, processed_at, last_error
@@ -196,15 +208,17 @@ export function createDb({ databaseUrl, databaseSsl }) {
 
   // Puts events back in the queue, e.g. dry_run or blocked events once
   // Salesforce is connected or a mapping decision has been made.
-  async function requeue({ status, ids }) {
+  // `error`: only events whose last error contains this text.
+  async function requeue({ status, ids, error }) {
     if (!status && !ids?.length) throw new Error('requeue needs a status or ids');
     const { rowCount } = await pool.query(
       `UPDATE shopify_events
        SET status = 'pending', attempts = 0, next_attempt_at = now(), last_error = NULL, locked_at = NULL
        WHERE status <> 'processing'
          AND ($1::text IS NULL OR status = $1)
-         AND ($2::bigint[] IS NULL OR id = ANY($2))`,
-      [status ?? null, ids?.length ? ids : null],
+         AND ($2::bigint[] IS NULL OR id = ANY($2))
+         AND ($3::text IS NULL OR strpos(last_error, $3) > 0)`,
+      [status ?? null, ids?.length ? ids : null, error ?? null],
     );
     return rowCount;
   }
@@ -227,7 +241,7 @@ export function createDb({ databaseUrl, databaseSsl }) {
   }
 
   return {
-    pool, migrate, insertEvent, claimEvents, finishEvent, retryEvent, listEvents, getEvent, countByStatus,
+    pool, migrate, insertEvent, claimEvents, finishEvent, retryEvent, deferEvent, listEvents, getEvent, countByStatus,
     requeue, requeueLatest, latestCustomerEvents, getOrderLink, saveOrderLink, unlinkedOrdersForCustomer,
     getLeadLink, saveLeadLink, ping,
   };

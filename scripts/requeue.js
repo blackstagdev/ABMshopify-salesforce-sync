@@ -2,6 +2,8 @@
 //
 //   npm run requeue -- --status=blocked            after fixing a blocker
 //   npm run requeue -- --ids=12,13
+//   npm run requeue -- --status=failed --error=REQUEST_LIMIT_EXCEEDED
+//                                                  only failures with that text
 //   npm run requeue -- --status=synced --latest    re-send only the newest event
 //                                                  per customer / per order
 //   npm run requeue -- --status=synced --latest --topic=orders     orders only
@@ -17,12 +19,17 @@ const status = arg('status');
 const ids = arg('ids')?.split(',').map(Number).filter(Number.isFinite);
 const latest = process.argv.includes('--latest');
 const topic = arg('topic');
+const error = arg('error');
 
 if (topic && !['customers', 'orders', 'ghl'].includes(topic)) {
   console.error('--topic must be customers, orders or ghl');
   process.exit(1);
 }
 
+if (error && latest) {
+  console.error('--error cannot be combined with --latest');
+  process.exit(1);
+}
 if (latest && !status) {
   console.error('--latest needs --status=<status>');
   process.exit(1);
@@ -33,6 +40,6 @@ if (!status && !ids?.length) {
 }
 
 const db = createDb(config);
-const count = latest ? await db.requeueLatest(status, topic ?? null) : await db.requeue({ status, ids });
+const count = latest ? await db.requeueLatest(status, topic ?? null) : await db.requeue({ status, ids, error });
 console.log(`Requeued ${count} event(s).`);
 await db.pool.end();

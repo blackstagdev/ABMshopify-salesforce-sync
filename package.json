@@ -24,7 +24,8 @@
     "coverage-check": "node scripts/coverage-check.js",
     "backfill-status": "node scripts/backfill-status.js",
     "goaffpro-explore": "node scripts/goaffpro-explore.js",
-    "goaffpro-sync": "node scripts/goaffpro-sync.js"
+    "goaffpro-sync": "node scripts/goaffpro-sync.js",
+    "report-shopify-id-conflicts": "node scripts/report-shopify-id-conflicts.js"
   },
   "dependencies": {
     "express": "^5.1.0",
