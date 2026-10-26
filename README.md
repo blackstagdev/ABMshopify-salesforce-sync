@@ -87,6 +87,7 @@ GoAffPro sales and commission totals aren't sent: Salesforce has no field for th
 | `blocked` | Needs a decision or config change (see `last_error`); not retried |
 | `failed` | Salesforce rejected it (4xx) or it ran out of retries |
 | `ignored` | Topic not synced |
+| `imported` | A backfill order loaded by `bulk-import-orders` instead |
 
 Salesforce 429 and 5xx errors and network errors are retried with backoff (30 s doubling to 1 h, up to `WORKER_MAX_ATTEMPTS`).
 
@@ -112,6 +113,7 @@ npm run register-webhooks                  # subscribe the Shopify app to the to
 npm run register-webhooks -- --list        # show current subscriptions
 npm run backfill -- --customers            # queue existing customers
 npm run backfill -- --orders --since=2026-01-01 --limit=100
+npm run -s bulk-import-orders -- --limit=100   # historical orders via the Bulk API (dry run; --apply to load, worker stopped)
 npm run requeue -- --ids=12,13             # replay specific events
 npm run requeue -- --status=synced --latest  # re-send the newest event per customer/order (e.g. to fill in a new field)
 npm run requeue -- --status=synced --latest --topic=orders     # ...orders only (or customers / ghl)

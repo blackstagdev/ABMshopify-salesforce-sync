@@ -25,7 +25,8 @@
     "backfill-status": "node scripts/backfill-status.js",
     "goaffpro-explore": "node scripts/goaffpro-explore.js",
     "goaffpro-sync": "node scripts/goaffpro-sync.js",
-    "report-shopify-id-conflicts": "node scripts/report-shopify-id-conflicts.js"
+    "report-shopify-id-conflicts": "node scripts/report-shopify-id-conflicts.js",
+    "bulk-import-orders": "node scripts/bulk-import-orders.js"
   },
   "dependencies": {
     "express": "^5.1.0",

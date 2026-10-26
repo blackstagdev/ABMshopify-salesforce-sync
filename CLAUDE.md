@@ -20,6 +20,7 @@ Node.js (ESM, Node 22+) service that pushes Shopify customers and orders from al
 - `scripts/`:
   - register-webhooks
   - backfill (`--limit`)
+  - bulk-import-orders: one-time historical order load through the Bulk API 2.0 (`src/orders/bulkImport.js`). It uses the same mapProviderOrder; New/Reorder from the full history; Account__c only if the practice exists, otherwise unlinked. It loads only orders with no link, keyed on the unique Shopify IDs, and saves links. It marks the queued backfill events `imported`. `--apply` refuses while the worker is active.
   - requeue (`--latest`: newest event per customer/order only)
   - sf-describe
   - ghl-explore, ghl-backfill

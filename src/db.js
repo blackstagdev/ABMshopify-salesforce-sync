@@ -93,6 +93,44 @@ export function createDb({ databaseUrl, databaseSsl }) {
     );
   }
 
+  // Every order link, for the bulk import: which orders are already in
+  // Salesforce, and whether their lines are recorded.
+  async function orderLinkSummary() {
+    const { rows } = await pool.query(
+      `SELECT shopify_order_id, salesforce_id, account_id, lines <> '{}'::jsonb AS has_lines FROM salesforce_orders`,
+    );
+    return new Map(rows.map((r) => [r.shopify_order_id, r]));
+  }
+
+  // Backfill order events whose order the bulk import has just loaded, so
+  // the worker doesn't send them again. Only events still waiting, or that
+  // failed on the API limit; other failures (practice problems) are kept.
+  async function markOrdersImported(shopifyOrderIds) {
+    if (!shopifyOrderIds.length) return 0;
+    const { rowCount } = await pool.query(
+      `UPDATE shopify_events
+       SET status = 'imported', last_error = NULL, locked_at = NULL, processed_at = now(),
+           result = '{"importedBy":"bulk-import-orders"}'::jsonb
+       WHERE webhook_id LIKE 'backfill:orders:%'
+         AND payload->>'id' = ANY($1)
+         AND (status = 'pending' OR (status = 'failed' AND last_error LIKE '%REQUEST_LIMIT_EXCEEDED%'))`,
+      [shopifyOrderIds],
+    );
+    return rowCount;
+  }
+
+  // True while a worker is processing events (any finished in the last few
+  // minutes, or one in progress).
+  async function workerActive() {
+    const { rows } = await pool.query(
+      `SELECT EXISTS (
+         SELECT 1 FROM shopify_events
+         WHERE status = 'processing' OR (processed_at > now() - interval '3 minutes' AND status <> 'imported')
+       ) AS active`,
+    );
+    return rows[0].active;
+  }
+
   // Orders sent before their customer had a Provider ID.
   async function unlinkedOrdersForCustomer(shopifyCustomerId) {
     const { rows } = await pool.query(
@@ -242,7 +280,7 @@ export function createDb({ databaseUrl, databaseSsl }) {
 
   return {
     pool, migrate, insertEvent, claimEvents, finishEvent, retryEvent, deferEvent, listEvents, getEvent, countByStatus,
-    requeue, requeueLatest, latestCustomerEvents, getOrderLink, saveOrderLink, unlinkedOrdersForCustomer,
+    requeue, requeueLatest, latestCustomerEvents, getOrderLink, saveOrderLink, unlinkedOrdersForCustomer, orderLinkSummary, markOrdersImported, workerActive,
     getLeadLink, saveLeadLink, ping,
   };
 }

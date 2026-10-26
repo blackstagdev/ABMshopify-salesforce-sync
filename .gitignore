@@ -12,3 +12,4 @@ node_modules/
 
 # Drafts that contain customer data
 emails/
+bulk-import/

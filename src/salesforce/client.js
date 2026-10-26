@@ -30,28 +30,34 @@ export function createSalesforceClient(cfg, fetchImpl = fetch) {
     session = { accessToken: data.access_token, instanceUrl: data.instance_url };
   }
 
-  async function request(method, path, body, { retryAuth = true } = {}) {
+  // contentType: send `body` as-is with that type (e.g. a Bulk API CSV)
+  // instead of as JSON. raw: return the response text unparsed.
+  async function request(method, path, body, { retryAuth = true, contentType, raw: rawResponse = false } = {}) {
     if (!session) await authenticate();
     const res = await fetchImpl(`${session.instanceUrl}/services/data/${cfg.apiVersion}${path}`, {
       method,
       headers: {
         Authorization: `Bearer ${session.accessToken}`,
-        'Content-Type': 'application/json',
+        'Content-Type': contentType ?? 'application/json',
       },
-      body: body === undefined ? undefined : JSON.stringify(body),
+      body: body === undefined ? undefined : contentType ? body : JSON.stringify(body),
     });
 
     if (res.status === 401 && retryAuth) {
       session = null;
-      return request(method, path, body, { retryAuth: false });
+      return request(method, path, body, { retryAuth: false, contentType, raw: rawResponse });
     }
 
     const raw = await res.text();
     let data = null;
-    try {
-      data = raw ? JSON.parse(raw) : null;
-    } catch {
+    if (rawResponse && res.ok) {
       data = raw;
+    } else {
+      try {
+        data = raw ? JSON.parse(raw) : null;
+      } catch {
+        data = raw;
+      }
     }
     if (!res.ok) {
       const detail = Array.isArray(data) ? data.map((e) => `${e.errorCode}: ${e.message}`).join('; ') : raw;
@@ -65,7 +71,18 @@ export function createSalesforceClient(cfg, fetchImpl = fetch) {
     return data.records;
   }
 
-  return { request, query };
+  // Every row, following nextRecordsUrl (2,000 rows per call).
+  async function queryAll(soql) {
+    let { data } = await request('GET', `/query?q=${encodeURIComponent(soql)}`);
+    const rows = [...data.records];
+    while (data.nextRecordsUrl) {
+      ({ data } = await request('GET', data.nextRecordsUrl.replace(/^\/services\/data\/v[\d.]+/, '')));
+      rows.push(...data.records);
+    }
+    return rows;
+  }
+
+  return { request, query, queryAll };
 }
 
 // Escape a value for use inside single quotes in SOQL.
