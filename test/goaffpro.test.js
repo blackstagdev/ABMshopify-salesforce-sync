@@ -149,3 +149,9 @@ test('the client stops when GoAffPro ignores the offset', async () => {
   }, /same page again/);
   assert.equal(seen, 100);
 });
+
+test('an affiliate with two emails keeps the first one', () => {
+  const m = mapAffiliate({ ...jane, email: 'danielle@matrixmedical.vip, manish@matrixmedical.vip' });
+  assert.equal(m.createFields.Primary_Email__c, 'danielle@matrixmedical.vip');
+  assert.match(m.warnings.join(), /only danielle@matrixmedical.vip was kept/);
+});

@@ -24,8 +24,11 @@ export function money(value) {
 
 // Salesforce Email fields hold 80 characters; truncating would corrupt it.
 export function checkEmail(email, warnings) {
-  const value = clean(email)?.toLowerCase();
-  if (!value) return undefined;
+  const raw = clean(email)?.toLowerCase();
+  if (!raw) return undefined;
+  // "a@x.com, b@x.com": Salesforce takes one address, so keep the first.
+  const [value, ...others] = raw.split(/[\s,;]+/).filter(Boolean);
+  if (others.length) warnings.push(`Several emails in "${raw}"; only ${value} was kept`);
   if (value.length > 80 || !value.includes('@')) {
     warnings.push(`Email "${value}" is not usable in Salesforce and was skipped`);
     return undefined;

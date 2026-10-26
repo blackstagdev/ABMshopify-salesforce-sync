@@ -31,9 +31,12 @@ console.log(`Orders in Salesforce via the sync: ${links.n} (${links.linked} link
 console.log(`Oldest order sent so far: ${oldestSent.d ?? '-'}`);
 
 const failures = await q(
-  `SELECT left(last_error, 90) AS error, count(*)::int AS n
+  // Grouped by the error itself: the Provider ID and query string are
+  // blanked out so the same failure on different practices counts once.
+  `SELECT left(regexp_replace(regexp_replace(last_error, 'Provider_ID__c/[^ ?]+', 'Provider_ID__c/<id>'), '[?][^ ]*', ''), 160) AS error,
+          count(*)::int AS n
    FROM shopify_events WHERE webhook_id LIKE $1 AND status = 'failed'
-   GROUP BY 1 ORDER BY 2 DESC LIMIT 5`,
+   GROUP BY 1 ORDER BY 2 DESC LIMIT 8`,
   [BACKFILL],
 );
 if (failures.length) {

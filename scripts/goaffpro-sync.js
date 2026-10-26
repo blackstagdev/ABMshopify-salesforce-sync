@@ -46,7 +46,7 @@ console.table([summary.uplines]);
 console.log(`REFERRED PRACTICES${verb}:`);
 console.table([summary.practices]);
 if (summary.errors.length) {
-  console.log(`\nPROBLEMS (${summary.errors.length}, first 15):`);
-  console.table(summary.errors.slice(0, 15));
+  console.log(`\nPROBLEMS (${summary.errors.length}):`);
+  console.table(summary.errors);
 }
 if (!apply) console.log('\nThis was a dry run. Add --apply to write (start with --limit=10).');
