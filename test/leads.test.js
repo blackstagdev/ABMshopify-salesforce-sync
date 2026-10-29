@@ -206,3 +206,18 @@ test('GHL webhook needs the secret and stores contact/opportunity ids', async ()
   assert.equal(stored[0].topic, 'ghl/opportunity');
   assert.deepEqual(stored[0].payload, { id: 'abm:c1', account: 'abm', contactId: 'c1', opportunityId: 'o1' });
 });
+
+test('admin report download needs the token and only serves known reports', async () => {
+  const config = { adminToken: 't0k', salesforce: {}, shopify: {}, ghl: { accounts: {} } };
+  const server = createApp({ db: {}, config, log: { info() {}, error() {} } }).listen(0);
+  const base = `http://localhost:${server.address().port}/admin/reports`;
+  const get = (name, token = 't0k') => fetch(`${base}/${name}`, { headers: { Authorization: `Bearer ${token}` } });
+  try {
+    assert.equal((await get('shopify-id-conflicts.csv', 'wrong')).status, 401);
+    assert.equal((await get('package.json')).status, 404);
+    assert.equal((await get('..%2Fpackage.json')).status, 404);
+    assert.equal((await get('constructor')).status, 404);
+  } finally {
+    server.close();
+  }
+});

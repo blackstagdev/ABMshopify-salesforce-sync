@@ -137,6 +137,7 @@ These are enabled when `ADMIN_TOKEN` is set. Send `Authorization: Bearer <ADMIN_
 - `GET /admin/events?status=blocked&limit=50`: recent events
 - `GET /admin/events/:id`: one event, with its payload and plan
 - `POST /admin/requeue` with `{"status":"blocked"}` or `{"ids":[1,2]}`: replay events
+- `GET /admin/reports/shopify-id-conflicts.csv` (or `bulk-import-problems.csv`): download a CSV a script wrote in the Render shell. Run the script first; the file is gone after a redeploy.
 
 ## Deploying
 

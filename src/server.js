@@ -1,4 +1,6 @@
 import crypto from 'node:crypto';
+import { existsSync } from 'node:fs';
+import { resolve } from 'node:path';
 import express from 'express';
 import { verifyShopifyHmac } from './shopify/verify.js';
 
@@ -134,6 +136,18 @@ function adminRoutes(db) {
     const { status, ids } = req.body || {};
     if (!status && !Array.isArray(ids)) return res.status(400).json({ error: 'Send a status or an ids array' });
     res.json({ requeued: await db.requeue({ status, ids }) });
+  });
+
+  // Report files the scripts write in the Render shell, which has no
+  // download. Only these names; the files vanish on redeploy.
+  const reports = {
+    'shopify-id-conflicts.csv': 'shopify-id-conflicts.csv',
+    'bulk-import-problems.csv': 'bulk-import/problems.csv',
+  };
+  router.get('/reports/:name', (req, res) => {
+    const file = Object.hasOwn(reports, req.params.name) && resolve(reports[req.params.name]);
+    if (!file || !existsSync(file)) return res.status(404).json({ error: 'Not found. Run the script first.' });
+    res.download(file, req.params.name);
   });
 
   return router;
