@@ -42,6 +42,34 @@ const failures = await q(
 if (failures.length) {
   console.log('\nFailed, most common reasons:');
   console.table(failures);
+
+  // An order upserts its practice first, so it fails whenever the customer
+  // does. Orders whose customer has since synced can simply be retried.
+  const byCustomer = await q(
+    `WITH failed AS (
+       SELECT payload->'customer'->>'id' AS customer_id, last_error FROM shopify_events
+       WHERE webhook_id LIKE $1 AND status = 'failed'
+     ), customer AS (
+       SELECT DISTINCT ON (payload->>'id') payload->>'id' AS customer_id, status FROM shopify_events
+       WHERE topic LIKE 'customers/%' ORDER BY payload->>'id', id DESC
+     )
+     SELECT CASE WHEN f.customer_id IS NULL THEN 'guest checkout' ELSE coalesce(c.status, 'never queued') END AS customer_status,
+            CASE WHEN last_error LIKE '%Shopify_ID__c duplicates%' THEN 'old UUID Provider ID'
+                 WHEN last_error LIKE '%DUPLICATES_DETECTED%' THEN 'possible duplicate practice'
+                 WHEN last_error LIKE '%REQUEST_LIMIT%' THEN 'API limit'
+                 ELSE 'other' END AS reason,
+            count(*)::int AS orders, count(DISTINCT f.customer_id)::int AS customers
+     FROM failed f LEFT JOIN customer c USING (customer_id)
+     GROUP BY 1, 2 ORDER BY 3 DESC`,
+    [BACKFILL],
+  );
+  console.log('Failed orders by their customer\'s sync status:');
+  console.table(byCustomer);
+  const retryable = byCustomer.filter((r) => r.customer_status === 'synced' || r.reason === 'API limit');
+  if (retryable.length) {
+    console.log(`${retryable.reduce((n, r) => n + r.orders, 0)} of these can be retried now (customer synced, or an API limit error):`);
+    console.log('  npm run requeue -- --status=failed --error=REQUEST_LIMIT   (and/or --error=<text> for the others)');
+  }
 }
 
 console.log(queue.waiting < 200
