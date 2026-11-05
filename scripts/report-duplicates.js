@@ -1,11 +1,14 @@
 // Read-only report of events Salesforce rejected as duplicates
 // (DUPLICATES_DETECTED). For each customer it shows what the record collided
-// with in Salesforce and who can fix it. Writes nothing anywhere.
+// with in Salesforce and who can fix it. Writes nothing except duplicates.csv
+// (download it from /admin/reports/duplicates.csv).
 //
 //   npm run report-duplicates
 //
 // Then, after fixing: npm run requeue -- --status=failed --latest
+import { writeFileSync } from 'node:fs';
 import { config } from '../src/config.js';
+import { toCsv } from '../src/csv.js';
 import { createDb } from '../src/db.js';
 import { createShopifyAdmin } from '../src/shopify/admin.js';
 import { createSalesforceClient, soqlString } from '../src/salesforce/client.js';
@@ -75,6 +78,9 @@ for (const event of events) {
   }
 
   const { action, detail } = explainDuplicate(kind, customer, candidates);
+  // The Account it most likely collided with: one holding another Provider ID, else the first match.
+  const match = candidates.accounts.find((a) => a.Provider_ID__c && a.Provider_ID__c.toUpperCase() !== providerId?.toUpperCase())
+    ?? candidates.accounts[0];
   rows.push({
     Event: event.id,
     Type: kind === 'account' ? 'Practice' : 'Contact',
@@ -83,22 +89,46 @@ for (const event of events) {
     'Provider ID': providerId ?? '',
     Action: action,
     Detail: detail,
+    shopifyCustomer: p.id,
+    matchName: match?.Name,
+    matchId: match?.Id,
+    matchProviderId: match?.Provider_ID__c,
+    // Old UUID Provider IDs are covered by the separate UUID update.
+    oldUuid: /^[0-9a-f]{8}-[0-9a-f]{4}-/i.test(match?.Provider_ID__c ?? ''),
   });
   process.stderr.write(`\rChecked ${rows.length}/${events.length}...`);
 }
 process.stderr.write('\n');
 
 // Wide table first, then the details one per line so long text is readable.
-console.table(rows.map(({ Detail, ...r }) => r));
+console.table(rows.map((r) => ({ Event: r.Event, Type: r.Type, Customer: r.Customer, Email: r.Email, 'Provider ID': r['Provider ID'], Action: r.Action })));
 console.log('\nDetails:');
 for (const r of rows) console.log(`\n[${r.Action}] event ${r.Event}: ${r.Customer} <${r.Email}>\n  ${r.Detail}`);
 
 const count = (a) => rows.filter((r) => r.Action.startsWith(a)).length;
+
+const csvRows = rows.map((r) => ({
+  'Shopify customer': r.Customer,
+  Email: r.Email,
+  'Shopify customer id': r.shopifyCustomer,
+  'Provider ID in Shopify': r['Provider ID'],
+  Type: r.Type,
+  'Matching Salesforce Account': r.matchName,
+  'Salesforce Account Id': r.matchId,
+  'Provider ID in Salesforce': r.matchProviderId,
+  'Old UUID Provider ID': r.oldUuid ? 'yes' : '',
+  Action: r.Action,
+  Detail: r.Detail,
+}));
+writeFileSync('duplicates.csv', toCsv(Object.keys(csvRows[0]), csvRows));
 console.log(`
 Duplicate failures: ${rows.length}
   YOU CAN FIX: ${count('YOU CAN FIX')}  (set the Provider ID on the Salesforce Account shown)
   ASK TEAM:    ${count('ASK TEAM')}  (different Provider ID, several matches, Leads, or a person on another practice)
   CHECK:       ${count('CHECK')}  (matched on something we can't see; look in Salesforce)
+  Of these, ${rows.filter((r) => r.oldUuid).length} collide with an Account holding an old UUID Provider ID (covered by the UUID update).
+
+Saved as duplicates.csv (download: /admin/reports/duplicates.csv)
 
 After fixing, re-send them with:
   npm run requeue -- --status=failed --latest`);

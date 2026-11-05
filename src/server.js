@@ -143,6 +143,7 @@ function adminRoutes(db) {
   const reports = {
     'shopify-id-conflicts.csv': 'shopify-id-conflicts.csv',
     'bulk-import-problems.csv': 'bulk-import/problems.csv',
+    'duplicates.csv': 'duplicates.csv',
   };
   router.get('/reports/:name', (req, res) => {
     const file = Object.hasOwn(reports, req.params.name) && resolve(reports[req.params.name]);
