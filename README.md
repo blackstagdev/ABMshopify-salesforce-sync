@@ -120,6 +120,7 @@ npm run requeue -- --status=synced --latest --topic=orders     # ...orders only 
 npm run -s data-check                      # read-only data answers (amounts, samples, names, test accounts)
 npm run check-provider-ids                 # who has a Provider ID, issues, and latest sync status
 npm run report-duplicates                  # explain DUPLICATES_DETECTED failures
+npm run -s report-lead-duplicates -- --account=abm   # GHL contacts blocked by the Lead duplicate rule (CSV)
 npm run -s report-shopify-id-conflicts     # Accounts holding the Shopify customer under another Provider ID (CSV)
 npm run requeue -- --status=failed --error=REQUEST_LIMIT_EXCEEDED   # re-send only failures with that text
 npm run ghl-explore -- --account=abm       # GHL pipelines, stage counts, field inventory (read-only)
@@ -137,7 +138,7 @@ These are enabled when `ADMIN_TOKEN` is set. Send `Authorization: Bearer <ADMIN_
 - `GET /admin/events?status=blocked&limit=50`: recent events
 - `GET /admin/events/:id`: one event, with its payload and plan
 - `POST /admin/requeue` with `{"status":"blocked"}` or `{"ids":[1,2]}`: replay events
-- `GET /admin/reports/shopify-id-conflicts.csv` (or `duplicates.csv`, `bulk-import-problems.csv`): download a CSV a script wrote in the Render shell. Run the script first; the file is gone after a redeploy.
+- `GET /admin/reports/shopify-id-conflicts.csv` (or `duplicates.csv`, `lead-duplicates.csv`, `bulk-import-problems.csv`): download a CSV a script wrote in the Render shell. Run the script first; the file is gone after a redeploy.
 
 ## Deploying
 

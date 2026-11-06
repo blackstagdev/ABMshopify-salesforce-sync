@@ -24,7 +24,7 @@ Node.js (ESM, Node 22+) service that pushes Shopify customers and orders from al
   - requeue (`--latest`: newest event per customer/order only)
   - sf-describe
   - ghl-explore, ghl-backfill
-  - report-duplicates
+  - report-duplicates, report-lead-duplicates (GHL contacts blocked by the Lead duplicate rule, with the Account/Contact/Lead they match; lead-duplicates.csv)
   - check-provider-ids
   - report-shopify-id-conflicts: DUPLICATE_VALUE on Shopify_ID__c (another Account already holds the Shopify customer under a different Provider ID). It needs a human decision; never match on Shopify_ID__c.
   - assign-provider-ids: generates random IDs. Provider IDs are actually the GHL contact IDs, so don't `--apply` it.

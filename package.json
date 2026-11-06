@@ -18,6 +18,7 @@
     "assign-provider-ids": "node scripts/assign-provider-ids.js",
     "check-provider-ids": "node scripts/check-provider-ids.js",
     "report-duplicates": "node scripts/report-duplicates.js",
+    "report-lead-duplicates": "node scripts/report-lead-duplicates.js",
     "ghl-explore": "node scripts/ghl-explore.js",
     "ghl-backfill": "node scripts/ghl-backfill.js",
     "data-check": "node scripts/data-check.js",
