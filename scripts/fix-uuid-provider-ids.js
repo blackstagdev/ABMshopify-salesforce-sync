@@ -90,7 +90,9 @@ if (toUpdate.length > limit) {
   toUpdate = rows.filter((r) => r.action === 'update');
 }
 
-const fixedCustomers = [];
+// Already fixed by an earlier run (e.g. interrupted before the re-queue):
+// their events are still re-queued.
+const fixedCustomers = rows.filter((r) => r.reason === 'Already fixed').map((r) => r.shopifyCustomerId);
 if (apply) {
   for (const batch of chunks(toUpdate, 200)) {
     const res = await sf.request('PATCH', '/composite/sobjects', {
@@ -113,7 +115,7 @@ if (apply) {
 // 4. Re-send: the newest event per fixed customer and per order, when that
 // newest event failed on this conflict.
 let requeued = 0;
-if (fixedCustomers.length > 0) {
+if (apply && fixedCustomers.length > 0) {
   ({ rowCount: requeued } = await db.pool.query(
     `UPDATE shopify_events
      SET status = 'pending', attempts = 0, next_attempt_at = now(), last_error = NULL, locked_at = NULL
