@@ -146,6 +146,7 @@ function adminRoutes(db) {
     'duplicates.csv': 'duplicates.csv',
     'lead-duplicates.csv': 'lead-duplicates.csv',
     'provider-id-fix.csv': 'provider-id-fix.csv',
+    'compare-ghl-ids.csv': 'compare-ghl-ids.csv',
   };
   router.get('/reports/:name', (req, res) => {
     const file = Object.hasOwn(reports, req.params.name) && resolve(reports[req.params.name]);

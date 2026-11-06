@@ -26,6 +26,7 @@ Node.js (ESM, Node 22+) service that pushes Shopify customers and orders from al
   - ghl-explore, ghl-backfill
   - report-duplicates, report-lead-duplicates (GHL contacts blocked by the Lead duplicate rule, with the Account/Contact/Lead they match; lead-duplicates.csv)
   - check-provider-ids
+  - compare-ghl-ids: read-only. For duplicates.csv rows where Salesforce and Shopify hold two different GHL IDs, checks both contacts in GHL (exists, Approved stage, email) and suggests which is right (`src/ghl/compareIds.js`). It only suggests; a person decides.
   - report-shopify-id-conflicts: DUPLICATE_VALUE on Shopify_ID__c (another Account already holds the Shopify customer under a different Provider ID). It needs a human decision; never match on Shopify_ID__c.
   - fix-uuid-provider-ids: for the report-shopify-id-conflicts Accounts, replaces an old UUID Provider_ID__c with the GHL ID Shopify holds (only if the Account still holds that Shopify customer, its ID is still a UUID, and no other Account uses the GHL ID; logic in `src/salesforce/providerIdFix.js`). Dry run unless `--apply`; writes provider-id-fix.csv (the rollback list) and re-queues the newest failed event per fixed customer/order. Run without Cloudforia's reply, at the project owner's decision (Nov 2026).
   - assign-provider-ids: generates random IDs. Provider IDs are actually the GHL contact IDs, so don't `--apply` it.

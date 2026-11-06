@@ -28,7 +28,8 @@
     "goaffpro-sync": "node scripts/goaffpro-sync.js",
     "report-shopify-id-conflicts": "node scripts/report-shopify-id-conflicts.js",
     "bulk-import-orders": "node scripts/bulk-import-orders.js",
-    "fix-uuid-provider-ids": "node scripts/fix-uuid-provider-ids.js"
+    "fix-uuid-provider-ids": "node scripts/fix-uuid-provider-ids.js",
+    "compare-ghl-ids": "node scripts/compare-ghl-ids.js"
   },
   "dependencies": {
     "express": "^5.1.0",

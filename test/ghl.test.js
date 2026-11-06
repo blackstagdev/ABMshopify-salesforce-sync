@@ -53,3 +53,16 @@ test('GHL client sends the token and API version, and pages opportunities', asyn
   assert.equal(calls[0].headers.Authorization, 'Bearer pit-123');
   assert.equal(calls[0].headers.Version, '2021-07-28');
 });
+
+import { suggestProviderId } from '../src/ghl/compareIds.js';
+
+test('two GHL IDs: suggest the one that still exists, is approved, or has the email', () => {
+  const live = { exists: true, approved: false, email: 'a@x.com' };
+  const gone = { exists: false };
+  assert.equal(suggestProviderId(live, gone, 'a@x.com').suggestion, 'Salesforce');
+  assert.equal(suggestProviderId(gone, live, 'a@x.com').suggestion, 'Shopify');
+  assert.equal(suggestProviderId(gone, gone, '').suggestion, 'ASK');
+  assert.equal(suggestProviderId(live, { ...live, approved: true }, 'a@x.com').suggestion, 'Shopify');
+  assert.equal(suggestProviderId({ ...live, email: 'b@x.com' }, live, 'A@x.com ').suggestion, 'Shopify');
+  assert.equal(suggestProviderId(live, live, 'a@x.com').suggestion, 'ASK');
+});
