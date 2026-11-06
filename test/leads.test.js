@@ -221,3 +221,68 @@ test('admin report download needs the token and only serves known reports', asyn
     server.close();
   }
 });
+
+// --- NPI to the practice Account ---
+
+test('NPI Number from GHL is checked and kept off the Lead', () => {
+  const withNpi = { ...contact, customFields: [{ id: 'cf4', value: '1234-567-893' }] };
+  const r = mapLead(opp, withNpi, fieldKeys, { ...cfg, npiField: 'contact.npi_number' }, 'New');
+  assert.equal(r.npi, '1234567893');
+  assert.equal('NPI__c' in r.fields, false);
+
+  const typo = mapLead(opp, { ...contact, customFields: [{ id: 'cf4', value: '1234567890' }] }, fieldKeys, { ...cfg, npiField: 'contact.npi_number' }, 'New');
+  assert.equal(typo.npi, undefined);
+  assert.match(typo.warnings.join(), /not a valid 10-digit NPI/);
+
+  assert.equal(mapLead(opp, withNpi, fieldKeys, cfg, 'New').npi, undefined, 'only when npiField is configured');
+});
+
+test('processor: Alpha BioMed ops carry the practice lookup with the NPI', async () => {
+  const acct = { ...fakeAccount(), cfg: { ...cfg, npiField: 'contact.npi_number' } };
+  acct.client = { async contact() { return { ...contact, customFields: [{ id: 'cf4', value: '1234567893' }] }; } };
+  const { result } = await processEvent(event, { mode: 'dry_run', ghl: { abm: acct }, ghlConfig: { leadSyncEnabled: true } });
+  assert.deepEqual(result.ops[0].practice, { providerId: 'c1', npi: '1234567893' });
+});
+
+function practiceSf(account) {
+  const calls = [];
+  return {
+    calls,
+    async request(method, path, body) {
+      calls.push({ method, path, body });
+      if (method === 'GET' && path.startsWith('/sobjects/Account/Provider_ID__c/')) {
+        if (!account) throw Object.assign(new Error('not found'), { status: 404 });
+        return { status: 200, data: account };
+      }
+      return { status: method === 'POST' ? 201 : 204, data: { id: '00QNEW' } };
+    },
+  };
+}
+
+test('approved practice: NPI written on its Account (found by Provider ID), no Lead created', async () => {
+  const sf = practiceSf({ Id: '001P', NPI__c: '1111111112' });
+  const op = { ...leadOp(), practice: { providerId: 'c1', npi: '1234567893' } };
+  const [r] = await executePlan({ ops: [op] }, sf, {}, leadStore());
+  assert.equal(sf.calls[0].path, '/sobjects/Account/Provider_ID__c/c1?fields=Id,NPI__c');
+  assert.deepEqual(sf.calls[1], { method: 'PATCH', path: '/sobjects/Account/001P', body: { NPI__c: '1234567893' } });
+  assert.equal(sf.calls.length, 2, 'no Lead');
+  assert.equal(r.action, 'skipped');
+  assert.deepEqual(r.practice, { accountId: '001P', npi: 'updated', previousNpi: '1111111112' });
+});
+
+test('same or missing NPI is not written; a blank never clears Salesforce', async () => {
+  for (const npi of ['1234567893', undefined]) {
+    const sf = practiceSf({ Id: '001P', NPI__c: '1234567893' });
+    const [r] = await executePlan({ ops: [{ ...leadOp(), practice: { providerId: 'c1', npi } }] }, sf, {}, leadStore());
+    assert.equal(sf.calls.length, 1);
+    assert.equal(r.practice.npi, 'unchanged');
+  }
+});
+
+test('no practice yet: the Lead is created as before, nothing written to Accounts', async () => {
+  const sf = practiceSf(null);
+  const [r] = await executePlan({ ops: [{ ...leadOp(), practice: { providerId: 'c1', npi: '1234567893' } }] }, sf, {}, leadStore());
+  assert.equal(r.action, 'created');
+  assert.deepEqual(sf.calls.map((c) => c.method), ['GET', 'POST']);
+  assert.equal(sf.calls.some((c) => c.path.startsWith('/sobjects/Account/0')), false);
+});

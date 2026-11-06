@@ -66,6 +66,9 @@ async function processGhlEvent(event, { mode, ghl, ghlConfig, salesforce, sf, st
       ghlOpportunityId: opp.id,
       idField: account.cfg.leadIdField || undefined,
       fields: lead.fields,
+      // Alpha BioMed: the practice Account whose Provider ID is this GHL
+      // contact ID gets the NPI; if it exists, no Lead is created.
+      ...(account.cfg.npiField && { practice: { providerId: contactId, npi: lead.npi } }),
     });
   }
 

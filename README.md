@@ -65,6 +65,7 @@ Lost or abandoned opportunities are sent with Status **Unresponsive**. After a L
   - `Entered_Salesforce__c` is left blank, as the Salesforce team asked
   - Contacts tagged exactly `bsd-lead` get `LeadSource = Black Stag`, so they're round-robined
 - **Owner:** Salesforce assigns it by State, and the app never sends one.
+- **NPI (Alpha BioMed):** the GHL "NPI Number" field goes to `NPI__c` on the practice Account whose Provider ID is the GHL contact ID. Invalid NPIs are reported, not sent, and a blank never clears Salesforce. If the practice already exists, no Lead is created, because it's already a customer. To pick up an NPI that's added later, add a GHL Workflow with the trigger "Contact Changed: NPI Number" that posts `contact_id` to the same webhook.
 - **No duplicates:** one Lead per GHL contact per sub-account. It's created once, then left to the sales team.
 
 ## GoAffPro affiliates → Salesforce

@@ -1,12 +1,13 @@
 // GHL opportunity + contact -> Salesforce Lead (Lead tab of the field
 // reference). Pure: no I/O.
 //
-// Never sent: OwnerId (Salesforce assigns leads by state, or round-robins
-// Black Stag ad leads), Self_Sourced__c, Entered_Salesforce__c, NPI/EIN and
-// reseller details.
+// Never sent on the Lead: OwnerId (Salesforce assigns leads by state, or
+// round-robins Black Stag ad leads), Self_Sourced__c, Entered_Salesforce__c,
+// NPI/EIN and reseller details. The NPI (GHL "NPI Number") goes to the
+// practice Account instead, when one exists (see npi below).
 import { clean, text, compact, checkEmail } from '../mapping/fields.js';
 
-// cfg: { lineOfBusiness, adLeadTag, leadIdField? }
+// cfg: { lineOfBusiness, adLeadTag, leadIdField?, npiField? }
 // fieldKeyById: GHL custom field id -> fieldKey, e.g. "contact.clinic_name"
 // status: the Lead Status for this opportunity (see leadStatusFor)
 export function mapLead(opportunity, contact, fieldKeyById, cfg, status) {
@@ -61,7 +62,16 @@ export function mapLead(opportunity, contact, fieldKeyById, cfg, status) {
   });
 
   if (!fields.State) warnings.push('No state: Salesforce sends leads without a matching territory to the fallback owner');
-  return { fields, warnings, blockers, isAdLead };
+
+  // For the practice Account's NPI__c (Lead has no NPI field). Only checked
+  // NPIs are sent; a typo is reported, never written.
+  let npi;
+  if (cfg.npiField) {
+    const raw = clean(custom[cfg.npiField]);
+    npi = normNpi(raw);
+    if (raw && !npi) warnings.push(`NPI Number "${raw}" in GHL is not a valid 10-digit NPI; not sent`);
+  }
+  return { fields, warnings, blockers, isAdLead, npi };
 }
 
 // The Salesforce Lead Status for an opportunity, or null when it is not a
@@ -82,4 +92,22 @@ function customValues(contact, fieldKeyById) {
     if (key) out[key] = cf.value ?? cf.fieldValue;
   }
   return out;
+}
+
+// A valid NPI: 10 digits whose last is the Luhn check digit over "80840" +
+// the first nine (the CMS rule). Spaces and dashes are ignored.
+export function normNpi(value) {
+  const digits = String(value ?? '').replace(/[\s-]/g, '');
+  if (!/^\d{10}$/.test(digits)) return undefined;
+  let sum = 0;
+  const all = `80840${digits}`;
+  for (let i = 0; i < all.length; i++) {
+    let d = Number(all[all.length - 1 - i]);
+    if (i % 2 === 1) {
+      d *= 2;
+      if (d > 9) d -= 9;
+    }
+    sum += d;
+  }
+  return sum % 10 === 0 ? digits : undefined;
 }

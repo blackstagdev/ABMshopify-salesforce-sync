@@ -101,6 +101,9 @@ export const config = {
           '66fa7cf2-2174-41cd-874f-eaea5b57ea5a': 'Qualified', // For Reactivation
         },
         lineOfBusiness: 'Alpha BioMed',
+        // GHL custom field key of the NPI, sent to the practice Account's
+        // NPI__c (Account found by Provider_ID__c = GHL contact ID).
+        npiField: env.GHL_ABM_NPI_FIELD ?? 'contact.npi_number',
       },
       sync: {
         token: env.GHL_SYNC_TOKEN,

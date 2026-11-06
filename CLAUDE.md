@@ -62,7 +62,9 @@ The current workbook is "Alpha BioMed - Salesforce Field Reference (Lead, Accoun
   - Created once (Salesforce routes the owner). After that, only Status is updated, by the Salesforce Id held in `salesforce_leads`. Converted or deleted Leads are left alone.
   - `LEAD_GHL_ID_FIELD` (e.g. GHL_Contact_ID__c, once the Salesforce team adds it): the GHL contact ID is sent on every create and update, and new Leads are upserted on it.
   - Company = companyName, or else the "Clinic Name" custom field (contact.clinic_name). The exact tag `bsd-lead` → LeadSource "Black Stag".
-  - Never send Entered_Salesforce__c (it starts the Salesforce team's alerts), OwnerId, Self_Sourced__c, NPI, EIN or reseller data.
+  - Never send Entered_Salesforce__c (it starts the Salesforce team's alerts), OwnerId, Self_Sourced__c, NPI (on the Lead), EIN or reseller data.
+  - NPI (Alpha BioMed, Nov 2026): GHL "NPI Number" (`contact.npi_number`, `GHL_ABM_NPI_FIELD`) goes to `Account.NPI__c` on the practice whose Provider_ID__c = the GHL contact ID (looked up, never upserted; never matched on NPI). Only valid NPIs (10 digits, Luhn check); a blank never clears Salesforce; GHL wins when they differ. The existing NPIs were filled in by hand in Salesforce, so there's no NPI backfill.
+  - If that practice Account exists and there's no Lead link, no Lead is created (`skipped`, already a customer): the Lead duplicate rule would block it anyway.
   - `npm run ghl-backfill -- --account=abm --limit=10` queues existing leads from the mapped stages.
   - Gated by `LEAD_SYNC_ENABLED`.
 

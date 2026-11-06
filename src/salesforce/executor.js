@@ -280,6 +280,7 @@ async function syncLines(op, saved, sf, opts, store) {
 // a lead can't be created twice even without the link.
 async function upsertLead(op, sf, store) {
   if (!store) throw new Error('Lead sync needs the database');
+  const practice = op.practice ? await updatePracticeNpi(op.practice, sf) : undefined;
   const link = await store.getLeadLink(op.account, op.ghlContactId);
 
   if (link) {
@@ -300,7 +301,13 @@ async function upsertLead(op, sf, store) {
       }
       throw err;
     }
-    return { op: 'upsertLead', action: 'updated', id: link.salesforce_id, status: patch.Status, ghlContactId: op.ghlContactId };
+    return { op: 'upsertLead', action: 'updated', id: link.salesforce_id, status: patch.Status, ghlContactId: op.ghlContactId, practice };
+  }
+
+  // Already a practice (approved provider): a Lead would only be a
+  // duplicate, and the Lead duplicate rule blocks it anyway.
+  if (practice?.accountId) {
+    return { op: 'upsertLead', action: 'skipped', reason: 'Already a customer: the practice Account has this GHL contact ID as its Provider ID', ghlContactId: op.ghlContactId, practice };
   }
 
   let id;
@@ -322,6 +329,17 @@ async function upsertLead(op, sf, store) {
     salesforceId: id,
   });
   return { op: 'upsertLead', action, id, status: op.fields.Status, ghlContactId: op.ghlContactId };
+}
+
+// The practice Account is found through Provider_ID__c only (never NPI).
+// GHL is the source of the NPI: a valid one replaces what Salesforce has; a
+// blank one never clears it.
+async function updatePracticeNpi({ providerId, npi }, sf) {
+  const existing = await getOrNull(sf, `/sobjects/Account/Provider_ID__c/${encodeURIComponent(providerId)}?fields=Id,NPI__c`);
+  if (!existing) return { accountId: null };
+  if (!npi || existing.NPI__c === npi) return { accountId: existing.Id, npi: 'unchanged' };
+  await sf.request('PATCH', `/sobjects/Account/${existing.Id}`, { NPI__c: npi });
+  return { accountId: existing.Id, npi: 'updated', previousNpi: existing.NPI__c ?? null };
 }
 
 // Orders sent while the customer had no Provider ID are linked to the
