@@ -8,6 +8,8 @@
 //                                                  per customer / per order
 //   npm run requeue -- --status=synced --latest --topic=orders     orders only
 //   npm run requeue -- --status=synced --latest --topic=customers  customers only
+//   npm run requeue -- --status=failed --latest --error=DUPLICATES_DETECTED
+//                                                  newest failure per record, with that text
 //
 // --latest never replays older data over newer data. Use it to re-send
 // records already synced, e.g. to fill in a newly mapped field.
@@ -26,10 +28,6 @@ if (topic && !['customers', 'orders', 'ghl'].includes(topic)) {
   process.exit(1);
 }
 
-if (error && latest) {
-  console.error('--error cannot be combined with --latest');
-  process.exit(1);
-}
 if (latest && !status) {
   console.error('--latest needs --status=<status>');
   process.exit(1);
@@ -40,6 +38,6 @@ if (!status && !ids?.length) {
 }
 
 const db = createDb(config);
-const count = latest ? await db.requeueLatest(status, topic ?? null) : await db.requeue({ status, ids, error });
+const count = latest ? await db.requeueLatest(status, topic ?? null, error ?? null) : await db.requeue({ status, ids, error });
 console.log(`Requeued ${count} event(s).`);
 await db.pool.end();

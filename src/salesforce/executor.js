@@ -60,27 +60,45 @@ async function upsertAccount(op, sf, opts, store) {
     const status = statusChange(existing, op);
     let rename = renameTo(existing, op);
     let renameBlocked = null;
+    let updateBlocked = false;
     const base = { ...op.updateFields, ...(status.value && { ABM_Status__c: status.value }) };
     const path = `/sobjects/Account/${existing.Id}`;
+    // The duplicate rule also runs on edits: when this practice looks like
+    // another Account, Salesforce rejects the update. Nothing is forced past
+    // the rule; the update is left out, and the Contact and orders still go
+    // to this Account, which was found by its Provider ID.
+    const patchUnlessDuplicate = async (body) => {
+      if (Object.keys(body).length === 0) return;
+      try {
+        await sf.request('PATCH', path, body);
+      } catch (err) {
+        if (!isDuplicateError(err)) throw err;
+        updateBlocked = true;
+      }
+    };
     try {
       const patch = { ...base, ...(rename && { Name: rename }) };
       if (Object.keys(patch).length > 0) await sf.request('PATCH', path, patch);
     } catch (err) {
-      // The new name matches another Account, so the duplicate rule blocks
-      // the update. Keep the old name (never bypass the rule), still save
-      // everything else so the practice's orders aren't held up, and flag it:
-      // the practice most likely exists twice in Salesforce.
-      if (!rename || !isDuplicateError(err)) throw err;
-      renameBlocked = rename;
-      rename = null;
-      if (Object.keys(base).length > 0) await sf.request('PATCH', path, base);
+      if (!isDuplicateError(err)) throw err;
+      if (rename) {
+        // The new name may be what matches: keep the old name, save the rest.
+        renameBlocked = rename;
+        rename = null;
+        await patchUnlessDuplicate(base);
+      } else {
+        updateBlocked = true;
+      }
     }
+    if (updateBlocked) status.value = undefined;
     const warnings = [
       status.warning,
-      renameBlocked && `Rename to "${renameBlocked}" blocked by the duplicate rule: this practice probably already exists in Salesforce under another Account`,
+      renameBlocked && !updateBlocked && `Rename to "${renameBlocked}" blocked by the duplicate rule: this practice probably already exists in Salesforce under another Account`,
+      updateBlocked && 'Account update blocked by the duplicate rule (this practice probably exists twice in Salesforce); its details were not updated, but the Contact and orders were still sent to it',
     ].filter(Boolean);
     result = {
-      op: 'upsertAccount', action: 'updated', id: existing.Id, providerId: op.providerId,
+      op: 'upsertAccount', action: updateBlocked ? 'update blocked' : 'updated', id: existing.Id, providerId: op.providerId,
+      ...(updateBlocked && { duplicateBlocked: true }),
       ...(status.value && { abmStatus: status.value }),
       ...(rename && { renamedFrom: existing.Name, renamedTo: rename }),
       ...(renameBlocked && { renameBlocked }),

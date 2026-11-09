@@ -109,3 +109,35 @@ test('other update errors still fail the event', async () => {
   };
   await assert.rejects(run(sf, accountOp(base)), /FIELD_INTEGRITY_EXCEPTION/);
 });
+
+test('an update blocked by the duplicate rule is left out; the practice is still used for its orders', async () => {
+  const calls = [];
+  const sf = {
+    async request(method, path, body) {
+      calls.push({ method, path, body });
+      if (method === 'GET') return { status: 200, data: { Id: '001X', Name: 'Sunrise Clinic' } };
+      if (method === 'PATCH') throw new SalesforceError(`PATCH ${path} -> 400 DUPLICATES_DETECTED: This practice may already be in Salesforce`, 400);
+      return { status: 204, data: null };
+    },
+    async query() { return []; },
+  };
+  const [result] = await run(sf, accountOp(base));
+  assert.equal(result.id, '001X');
+  assert.equal(result.action, 'update blocked');
+  assert.equal(result.duplicateBlocked, true);
+  assert.equal('abmStatus' in result, false);
+  assert.match(result.warning, /Contact and orders were still sent/);
+});
+
+test('rename and the rest both blocked: nothing forced, still no failure', async () => {
+  const sf = {
+    async request(method) {
+      if (method === 'GET') return { status: 200, data: { Id: '001X', Name: 'Dana Lee' } };
+      throw new SalesforceError('PATCH -> 400 DUPLICATES_DETECTED: This practice may already be in Salesforce', 400);
+    },
+    async query() { return []; },
+  };
+  const [result] = await run(sf, accountOp(base));
+  assert.equal(result.action, 'update blocked');
+  assert.doesNotMatch(result.warning, /Rename to/);
+});

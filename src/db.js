@@ -144,20 +144,21 @@ export function createDb({ databaseUrl, databaseSsl }) {
   // Requeues only the newest event per customer / per order with this
   // status, so replaying never applies older data over newer data.
   // kind: optional "customers", "orders" or "ghl" to limit the requeue.
-  async function requeueLatest(status, kind = null) {
+  // error: optional text the newest event's last_error must contain.
+  async function requeueLatest(status, kind = null, error = null) {
     const { rowCount } = await pool.query(
       `UPDATE shopify_events
        SET status = 'pending', attempts = 0, next_attempt_at = now(), last_error = NULL, locked_at = NULL
        WHERE id IN (
          SELECT id FROM (
-           SELECT DISTINCT ON (split_part(topic, '/', 1), payload->>'id') id, status
+           SELECT DISTINCT ON (split_part(topic, '/', 1), payload->>'id') id, status, last_error
            FROM shopify_events
            WHERE ($2::text IS NULL OR split_part(topic, '/', 1) = $2)
            ORDER BY split_part(topic, '/', 1), payload->>'id', id DESC
          ) latest
-         WHERE status = $1
+         WHERE status = $1 AND ($3::text IS NULL OR last_error LIKE '%' || $3 || '%')
        )`,
-      [status, kind],
+      [status, kind, error],
     );
     return rowCount;
   }
