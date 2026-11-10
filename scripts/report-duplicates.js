@@ -19,15 +19,16 @@ const sf = createSalesforceClient(config.salesforce);
 const shopify = createShopifyAdmin(config.shopify);
 const [namespace, key] = config.mapping.providerIdMetafield.split('.');
 
-// The newest failed event per customer only.
+// The newest event per customer, only when that one failed: an older failure
+// whose customer has since synced is not a problem any more.
 const { rows: events } = await db.pool.query(
   `SELECT * FROM (
-     SELECT DISTINCT ON (payload->>'id') id, payload, last_error
+     SELECT DISTINCT ON (payload->>'id') id, payload, status, last_error
      FROM shopify_events
-     WHERE topic LIKE 'customers/%' AND status = 'failed'
+     WHERE topic LIKE 'customers/%'
      ORDER BY payload->>'id', id DESC
    ) latest
-   WHERE last_error LIKE '%DUPLICATES_DETECTED%'
+   WHERE status = 'failed' AND last_error LIKE '%DUPLICATES_DETECTED%'
    ORDER BY id`,
 );
 
