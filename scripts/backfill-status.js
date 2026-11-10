@@ -30,12 +30,21 @@ const [oldestSent] = await q(`SELECT left(min(payload->>'created_at'), 10) AS d 
 console.log(`Orders in Salesforce via the sync: ${links.n} (${links.linked} linked to a practice)`);
 console.log(`Oldest order sent so far: ${oldestSent.d ?? '-'}`);
 
+// A failed backfill attempt whose order reached Salesforce through a newer
+// event is not a problem any more: only orders with no link count as failed.
+const NOT_IN_SF = `NOT EXISTS (SELECT 1 FROM salesforce_orders o WHERE o.shopify_order_id = payload->>'id')`;
+const [stale] = await q(
+  `SELECT count(*)::int AS n FROM shopify_events WHERE webhook_id LIKE $1 AND status = 'failed' AND NOT ${NOT_IN_SF}`,
+  [BACKFILL],
+);
+if (stale.n > 0) console.log(`(${stale.n} of the failed ones are already in Salesforce through a newer event: not counted below.)`);
+
 const failures = await q(
   // Grouped by the error itself: the Provider ID and query string are
   // blanked out so the same failure on different practices counts once.
   `SELECT left(regexp_replace(regexp_replace(last_error, 'Provider_ID__c/[^ ?]+', 'Provider_ID__c/<id>'), '[?][^ ]*', ''), 160) AS error,
           count(*)::int AS n
-   FROM shopify_events WHERE webhook_id LIKE $1 AND status = 'failed'
+   FROM shopify_events WHERE webhook_id LIKE $1 AND status = 'failed' AND ${NOT_IN_SF}
    GROUP BY 1 ORDER BY 2 DESC LIMIT 8`,
   [BACKFILL],
 );
@@ -48,7 +57,7 @@ if (failures.length) {
   const byCustomer = await q(
     `WITH failed AS (
        SELECT payload->'customer'->>'id' AS customer_id, last_error FROM shopify_events
-       WHERE webhook_id LIKE $1 AND status = 'failed'
+       WHERE webhook_id LIKE $1 AND status = 'failed' AND ${NOT_IN_SF}
      ), customer AS (
        SELECT DISTINCT ON (payload->>'id') payload->>'id' AS customer_id, status FROM shopify_events
        WHERE topic LIKE 'customers/%' ORDER BY payload->>'id', id DESC
@@ -68,7 +77,7 @@ if (failures.length) {
   const retryable = byCustomer.filter((r) => r.customer_status === 'synced' || r.reason === 'API limit');
   if (retryable.length) {
     console.log(`${retryable.reduce((n, r) => n + r.orders, 0)} of these can be retried now (customer synced, or an API limit error):`);
-    console.log('  npm run requeue -- --status=failed --error=REQUEST_LIMIT   (and/or --error=<text> for the others)');
+    console.log('  npm run requeue -- --status=failed --latest --error=REQUEST_LIMIT   (or --error=<text> for the others)');
   }
 }
 
