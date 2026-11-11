@@ -8,8 +8,12 @@ const db = createDb(config);
 const q = async (sql, params = []) => (await db.pool.query(sql, params)).rows;
 const BACKFILL = 'backfill:orders:%';
 
+// A failed attempt whose order later reached Salesforce through a newer event
+// is shown apart, so "failed" means orders that are really missing.
 const byStatus = await q(
-  `SELECT status, count(*)::int AS orders,
+  `SELECT CASE WHEN status = 'failed' AND EXISTS (SELECT 1 FROM salesforce_orders o WHERE o.shopify_order_id = payload->>'id')
+               THEN 'failed, then sent later' ELSE status END AS status,
+          count(*)::int AS orders,
           left(min(payload->>'created_at'), 10) AS oldest_order,
           left(max(payload->>'created_at'), 10) AS newest_order
    FROM shopify_events WHERE webhook_id LIKE $1 GROUP BY 1 ORDER BY 1`,
