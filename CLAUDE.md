@@ -24,6 +24,7 @@ Node.js (ESM, Node 22+) service that pushes Shopify customers and orders from al
   - requeue (`--latest`: newest event per customer/order only)
   - sf-describe
   - ghl-explore, ghl-backfill
+  - report-missing-provider-ids: read-only list of customers whose newest event is blocked (usually no Provider ID in Shopify), with their unlinked orders; missing-provider-ids.csv
   - report-duplicates, report-lead-duplicates (GHL contacts blocked by the Lead duplicate rule, with the Account/Contact/Lead they match; lead-duplicates.csv)
   - check-provider-ids
   - compare-ghl-ids: read-only. For duplicates.csv rows where Salesforce and Shopify hold two different GHL IDs, checks both contacts in GHL (exists, Approved stage, email) and suggests which is right (`src/ghl/compareIds.js`). It only suggests; a person decides.
